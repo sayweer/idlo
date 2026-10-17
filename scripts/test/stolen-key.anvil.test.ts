@@ -120,9 +120,10 @@ describe.skipIf(!READY)("E-4 / M-1 [ANVIL] gerçek FlightPlan, yerel zincir", ()
   });
 
   it("E-4 [ANVIL] CLI: tsx scripts/stolen-key.ts --local (anahtar yalnız ortamdan) → çıkış 0, sahne metni Türkçe", async () => {
-    const tsx = join(REPO, "node_modules/.bin/tsx");
+    // tsx'in JS girişi node ile: .bin/tsx Windows'ta doğrudan spawn edilemez (ENOENT).
+    const tsxCli = join(REPO, "node_modules/tsx/dist/cli.mjs");
     const res = await new Promise<{ code: number | null; out: string }>((resolve) => {
-      const p = spawn(tsx, [join(REPO, "scripts/stolen-key.ts"), "--local", "--deployments", deploymentsPath], {
+      const p = spawn(process.execPath, [tsxCli, join(REPO, "scripts/stolen-key.ts"), "--local", "--deployments", deploymentsPath], {
         env: { PATH: process.env.PATH ?? "", ...env() },
         stdio: ["ignore", "pipe", "pipe"],
       });

@@ -251,9 +251,10 @@ describe.skipIf(!HAS_ANVIL)("A3 register-agent (Anvil)", () => {
     try {
       const run = (env: Record<string, string>) =>
         new Promise<{ code: number | null; out: string }>((resolve) => {
+          // tsx'in JS girişi node ile: .bin/tsx Windows'ta doğrudan spawn edilemez (ENOENT).
           const p = spawn(
-            join(SCRIPTS_DIR, "..", "node_modules", ".bin", "tsx"),
-            [join(SCRIPTS_DIR, "register-agent.ts"), "--agent-uri", uri, "--rpc", dev.rpc, "--deployments", path, "--local", "--registry", LOCAL_REGISTRY, "--broadcast"],
+            process.execPath,
+            [join(SCRIPTS_DIR, "..", "node_modules", "tsx", "dist", "cli.mjs"), join(SCRIPTS_DIR, "register-agent.ts"), "--agent-uri", uri, "--rpc", dev.rpc, "--deployments", path, "--local", "--registry", LOCAL_REGISTRY, "--broadcast"],
             { env: { PATH: process.env.PATH ?? "", ...env } },
           );
           let out = "";

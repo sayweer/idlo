@@ -19,7 +19,8 @@ import { identityRegistryAbi, type RegistryLog } from "../lib/erc8004.js";
 import { parseCliArgs, registerAgent, type RegisterDeps, type RegisterOptions } from "../lib/registerAgent.js";
 
 const SCRIPTS_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
-const TSX = join(SCRIPTS_DIR, "..", "node_modules", ".bin", "tsx");
+// tsx'in JS girişi node ile çalıştırılır: .bin/tsx Windows'ta doğrudan spawn edilemez (ENOENT, yalnız tsx.CMD var).
+const TSX_CLI = join(SCRIPTS_DIR, "..", "node_modules", "tsx", "dist", "cli.mjs");
 const EXAMPLE = JSON.parse(readFileSync(join(SCRIPTS_DIR, "..", "deployments", "fuji.example.json"), "utf8"));
 const CARD = buildAgentCard({ imageUrl: "https://pilot.test/pilot.png", mcpEndpoint: "https://servis.pilot.test/mcp" });
 const URI = "https://pilot.test/agent.json";
@@ -316,7 +317,7 @@ describe("A3 düşman: anahtar sızıntısı (CLI)", () => {
 
   const runCli = (env: Record<string, string>, rpc: string) =>
     new Promise<{ code: number | null; out: string }>((resolve) => {
-      const p = spawn(TSX, [join(SCRIPTS_DIR, "register-agent.ts"), "--agent-uri", URI, "--rpc", rpc, "--deployments", deploymentsPath], {
+      const p = spawn(process.execPath, [TSX_CLI, join(SCRIPTS_DIR, "register-agent.ts"), "--agent-uri", URI, "--rpc", rpc, "--deployments", deploymentsPath], {
         env: { PATH: process.env.PATH ?? "", ...env },
       });
       let out = "";
