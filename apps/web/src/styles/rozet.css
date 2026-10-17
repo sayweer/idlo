@@ -1,0 +1,18 @@
+/* Mod rozetleri: DEMO / KAYIT / KÂĞIT / TEMSİLİ VERİ … Kırmızı YOK (kırmızı yalnız ret ve alarm için). */
+.rozetler { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rozet {
+  font-family: var(--f-mono); font-weight: 600; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 4px 8px; border: 1.5px solid var(--ink); background: var(--glow); color: var(--ink); white-space: nowrap;
+}
+.rozet-live { background: var(--paper); border-color: var(--ok); color: var(--ok); }
+.rozet-rules, .rozet-replay { background: var(--paper-2); }
+.rozet-paper, .rozet-demo, .rozet-demoPlan, .rozet-mockPay, .rozet-injection { background: var(--glow); }
+
+/* shell: rail nav + durum kartı */
+.railnav { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.railnav a { font-family: var(--f-mono); font-size: 13px; color: var(--ink); text-decoration: none; padding: 9px 10px; border: 1px dashed rgba(29, 26, 22, 0.3); display: flex; justify-content: space-between; gap: 8px; min-height: 40px; align-items: center; }
+.railnav a:hover { background: rgba(255, 224, 138, 0.45); }
+.railnav a.on { background: var(--ink); color: var(--paper); border-style: solid; }
+.railnav a:focus-visible { outline: 2px dashed var(--ink); outline-offset: 2px; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: rgba(29, 26, 22, 0.35); margin-right: 8px; }
+.status-dot.ready { background: #3fbf6a; box-shadow: 0 0 0 3px rgba(63, 191, 106, 0.25); }
