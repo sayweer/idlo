@@ -20,7 +20,7 @@ import { DEMO_LABELS, cycleIdOf, msToSec, secToMs, type CycleId } from "@pilot/s
 import type { Clock } from "../clients/clock.js";
 import type { KuleClient } from "../clients/kule.js";
 import type { PilotTools, WeatherSource } from "../tools/index.js";
-import type { TraceRecord, TraceStore, Trigger } from "../trace/index.js";
+import { turnChoice, type TraceRecord, type TraceStore, type Trigger } from "../trace/index.js";
 import type { LlmClient } from "./llm.js";
 import { runLlmTurn, runRuleTurn, type TurnOutcome } from "./planner.js";
 
@@ -151,6 +151,8 @@ export class PilotLoop {
         mode: outcome.mode,
         steps: outcome.steps,
         rationaleTr: outcome.rationaleTr,
+        // Önerilen ve seçilen seçenek (panel rozeti, §10.3-1 / E-5); yalnız gösterim.
+        ...turnChoice(outcome.steps),
       },
       labels: [...this.d.labels, ...(outcome.mode === "rules" ? [DEMO_LABELS.rulesMode] : [])],
       trigger,

@@ -15,6 +15,7 @@ import {
   MAX_TOOL_CALLS_PER_TURN,
   PILOT_TOOL_NAMES,
   kuleReasonText,
+  minutesToMs,
   parseOptionId,
   pxToPxE6,
   trParts,
@@ -129,7 +130,7 @@ async function closeByCode(turn: PilotTurn, log: StepLog, nowMs: number, gerekce
   const done = endOf(turn);
   if (done) return done;
   if (turn.calls < MAX_TOOL_CALLS_PER_TURN) await log.call(turn, "bekle", { dakika: HOLD_WAIT_MIN, gerekce });
-  return endOf(turn) ?? { by: "code", untilMs: nowMs + HOLD_WAIT_MIN * 60_000, gerekce };
+  return endOf(turn) ?? { by: "code", untilMs: nowMs + minutesToMs(HOLD_WAIT_MIN), gerekce };
 }
 
 function trTime(nowMs: number): string {

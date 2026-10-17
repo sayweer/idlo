@@ -4,7 +4,7 @@
  */
 import type { z } from "zod";
 import type { EkonomikTakvimOutputSchema, HaberleriOkuOutputSchema, UnixMs, Weather } from "@pilot/shared";
-import { WeatherError } from "../weather/index.js";
+import { WeatherError } from "@pilot/shared";
 
 export interface WeatherSource {
   /** `nowMs` anındaki son Weather (§11). Veri yoksa fırlatır. */

@@ -1,0 +1,8 @@
+{
+  "label": "DEMO TAKVİMİ",
+  "note": "Gerçek takvim değildir. ATK news_get_economic_calendar TR'de doğrulanana kadar (SPEC §21 #10) sahne takvimi: her öğe her gün aynı Türkiye saatinde (sabit UTC+3) tekrarlanır.",
+  "daily": [
+    { "trTime": "10:00", "title": "TÜİK enflasyon verisi (DEMO)", "country": "TR", "importance": "high" },
+    { "trTime": "14:00", "title": "TCMB faiz kararı (DEMO)", "country": "TR", "importance": "high" }
+  ]
+}

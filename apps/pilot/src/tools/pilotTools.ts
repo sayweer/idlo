@@ -25,6 +25,8 @@ import {
   REJECT_TEXTS,
   buyOptionId,
   cycleIdOf,
+  hoursToMs,
+  minutesToMs,
   msToSec,
   pxToPxE6,
   trDay,
@@ -57,7 +59,7 @@ export const NEWS_MAX_ITEMS = 20;
 export const NEWS_MAX_TITLE = 300;
 export const NEWS_MAX_BODY = 2000;
 /** ekonomik_takvim: "önümüzdeki 24 saat" (§10.2). */
-export const CALENDAR_HORIZON_MS = 24 * 3600 * 1000;
+export const CALENDAR_HORIZON_MS = hoursToMs(24);
 export const CALENDAR_MAX_EVENTS = 20;
 
 /** §10.4 "yarısı alındı" kuralının geçtiği sınıflar (src/rules/decision.ts ile aynı). */
@@ -358,7 +360,7 @@ export class PilotTurn {
   // ─────────────────────────── turu kapatan ───────────────────────────
 
   private async bekle(i: In<typeof BekleInputSchema>) {
-    const untilMs = this.deps.clock.nowMs() + i.dakika * 60_000;
+    const untilMs = this.deps.clock.nowMs() + minutesToMs(i.dakika);
     this.ended = { tool: "bekle", untilMs, gerekce: i.gerekce };
     return { ok: true as const, untilMs };
   }

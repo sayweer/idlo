@@ -18,6 +18,7 @@
 import { z } from "zod";
 import {
   CycleSchema,
+  HOUR_SEC,
   KuralDanisOutputSchema,
   OptionIdSchema,
   PLAN_DAY_MAX,
@@ -29,9 +30,13 @@ import {
   cycleIdOf,
   halfTL,
   hoursToDeadline,
+  hoursToSec,
+  minutesToMs,
+  minutesToSec,
   optionId,
   optionText,
   parseOptionId,
+  secToMinutesCeil,
   secToMs,
   trDay,
   type KuralDanisOutput,
@@ -43,9 +48,7 @@ import {
 // ─────────────────────────────── Sabitler ───────────────────────────────
 
 /** §10.4 "Soru zaman aşımı": Elif 2 saat içinde cevap vermezse varsayılan "yarısını al (post_only)". */
-export const QUESTION_TIMEOUT_SEC = 2 * 3600;
-
-const HOUR_SEC = 3600;
+export const QUESTION_TIMEOUT_SEC = hoursToSec(2);
 
 /** §10.4: son güne bu kadar saatten az kaldıysa her durumda BUY(chunk, ioc). */
 export const DEADLINE_RUSH_H = 24;
@@ -55,7 +58,7 @@ export const DEADLINE_RUSH_H = 24;
  * TODO(spec): SPEC karar tablosu için tazelik sınırı vermiyor. Döngü her 5 dk mum kapanışından 5 sn sonra çalışır
  * (§10.1); en dar seçim iki mum (10 dk).
  */
-export const MAX_WEATHER_AGE_MS = secToMs(10 * 60);
+export const MAX_WEATHER_AGE_MS = minutesToMs(10);
 
 /**
  * Fail-closed bekleme süresi (dk). TODO(spec): SPEC süre vermiyor; en dar seçim bir döngü periyodu (§10.1: 5 dk).
@@ -240,13 +243,13 @@ function withQuestion(i: DecisionInput, episodeStartTs: number, half: TL, base: 
     const elapsed = i.nowSec - q.askedAtSec;
     if (elapsed >= QUESTION_TIMEOUT_SEC) return one(buy(half, "post_only"), DECISION_REASONS.questionTimeout);
     // Aynı soruyu yeniden sorma; zaman aşımına kadar (en fazla 60 dk) bekle.
-    return one(wait(Math.min(60, Math.ceil((QUESTION_TIMEOUT_SEC - elapsed) / 60))), DECISION_REASONS.questionPending);
+    return one(wait(Math.min(60, secToMinutesCeil(QUESTION_TIMEOUT_SEC - elapsed))), DECISION_REASONS.questionPending);
   }
 
   const id = q.answer;
   if (!base.allowed.some((o) => o.kind !== "ASK" && optionId(o) === id)) return base;
   const answer = parseOptionId(id);
-  if (answer.kind === "WAIT" && i.nowSec >= q.answeredAtSec + answer.minutes * 60) return base;
+  if (answer.kind === "WAIT" && i.nowSec >= q.answeredAtSec + minutesToSec(answer.minutes)) return base;
   return one(answer, `Elif'in cevabı: ${optionText(answer)}`);
 }
 

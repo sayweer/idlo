@@ -14,7 +14,9 @@ import {
   TraceSchema,
   parseOptionId,
   pxToPxE6,
+  utcMs,
   type KuralDanisOutput,
+  type Replay,
   type Weather,
 } from "@pilot/shared";
 import { ChainError, KuleError, type ChainClient, type KuleClient } from "../src/clients/index.js";
@@ -29,7 +31,7 @@ import {
   type ReplaySimOptions,
 } from "../src/loop/index.js";
 import { FileTraceStore, MemoryTraceStore, TraceRecordSchema, type TraceRecord } from "../src/trace/index.js";
-import { readReplayFile, utcMs, type Replay } from "../src/weather/index.js";
+import { readReplayFile } from "../src/weather/index.js";
 
 // ─────────────────────────────── Kurulum ───────────────────────────────
 
