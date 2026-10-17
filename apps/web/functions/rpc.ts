@@ -1,12 +1,10 @@
-// Same-origin JSON-RPC relay for Arc mainnet (Cloudflare Pages Function).
-// Arc's public RPC rate-limits eth_call hard (-32005 / HTTP 429 / 503, the 503s without CORS headers),
-// so reads go through several keyless providers in order and fall through on limits or errors.
+// Aynı kökenli JSON-RPC aracısı: Avalanche Fuji C-Chain (43113).
+// Herkese açık RPC'ler hız sınırına takılabildiği için okumalar sırayla birkaç anahtarsız sağlayıcıdan geçer.
 
 const UPSTREAMS = [
-  "https://arc-rpc.publicnode.com", // handles 5k-block eth_getLogs
-  "https://arc.drpc.org",
-  "https://5042.rpc.thirdweb.com",
-  "https://rpc.mainnet.arc.io",
+  "https://api.avax-test.network/ext/bc/C/rpc",
+  "https://avalanche-fuji-c-chain-rpc.publicnode.com",
+  "https://43113.rpc.thirdweb.com",
 ];
 
 const ALLOWED = new Set([
