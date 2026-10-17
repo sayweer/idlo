@@ -10,19 +10,22 @@
 import type { Address } from "viem";
 import {
   DEMO_LABELS,
+  MIN5_MS,
   PLAN_DAY_MAX,
   PLAN_DEFAULTS,
+  daysToSec,
   floorToTick,
   msToSec,
   pxToPxE6,
+  runReplay,
   type Cycle,
   type Plan,
+  type Replay,
   type Weather,
 } from "@pilot/shared";
 import { FakeChain, FakeKule, ManualClock, type ChainClient, type KuleClient } from "../clients/index.js";
 import { PilotTools, replayWeatherSource, type CalendarSource, type NewsSource } from "../tools/index.js";
 import type { TraceRecord, TraceStore } from "../trace/index.js";
-import { MIN5_MS, runReplay, type Replay } from "../weather/index.js";
 import type { LlmClient } from "./llm.js";
 import { PilotLoop } from "./loop.js";
 
@@ -52,7 +55,7 @@ export function replayPlan(replay: Pick<Replay, "day" | "simTo">): Plan {
     bandBps: PLAN_DEFAULTS.bandBps,
     closedBandBps: PLAN_DEFAULTS.closedBandBps,
     askMode: 1,
-    expiresAt: msToSec(replay.simTo) + PLAN_DEFAULTS.expiresInDays * 86_400,
+    expiresAt: msToSec(replay.simTo) + daysToSec(PLAN_DEFAULTS.expiresInDays),
     agent: REPLAY_ADDRESSES.agent,
     kule: REPLAY_ADDRESSES.kule,
     agentId: "0",

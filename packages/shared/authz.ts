@@ -22,9 +22,10 @@
 import { isAddress, isAddressEqual, zeroAddress, type Address } from "viem";
 import { ACTION_STATES, verdictOfReason, type KuleReasonCode, type KuleVerdict } from "./codes.js";
 import type { ChainBuyAction, ChainPlan } from "./schemas/plan.js";
+import { minutesToSec } from "./units.js";
 
 /** §9.2 adım 5: openBy − now ≥ 12 dakika. */
-export const MIN_OPEN_MARGIN_SEC = 12 * 60;
+export const MIN_OPEN_MARGIN_SEC = minutesToSec(12);
 
 /** KULE'nin kendi yapılandırması (.env). */
 export interface KuleBinding {

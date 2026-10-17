@@ -9,6 +9,7 @@ import {
   BuyActionSchema,
   PlanSchema,
   cycleIdOf,
+  minutesToSec,
   msToSec,
   trDay,
   type BuyAction,
@@ -22,8 +23,8 @@ import {
 import type { Clock } from "./clock.js";
 import { ChainError, type ChainClient, type RequestBuyArgs, type RequestBuyResult } from "./chain.js";
 
-export const OPEN_WINDOW_SEC = 15 * 60;
-export const REPORT_WINDOW_SEC = 60 * 60;
+export const OPEN_WINDOW_SEC = minutesToSec(15);
+export const REPORT_WINDOW_SEC = minutesToSec(60);
 
 export type FakeChainEvent =
   | { kind: "BuyAuthorized"; actionId: string; user: Address; amountTL: TL; maxPxE6: number; ordType: OrdType; reasonHash: Hex; tx: Hex }

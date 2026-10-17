@@ -1,10 +1,11 @@
 /** Lira Hava Durumu şeması (§11, §11.2, §15). Zamanlar OKX ms. */
 import { z } from "zod";
 import { EPISODE_DIRS, STORM_CLASSES, WEATHER_CLASSES, ZD_ALARM, episodeDirOf } from "../codes.js";
+import { hoursToMs } from "../units.js";
 import { UnixMsSchema } from "./primitives.js";
 
 /** Bölüm süresi: son alarmdan 6 saat sonra kapanır (§11.2-2). */
-export const EPISODE_DURATION_MS = 6 * 3600 * 1000;
+export const EPISODE_DURATION_MS = hoursToMs(6);
 
 /** Fırtına bölümü (§11.2-5): {type, dir, P0, startTs, lastAlarmTs, endsAt}. */
 export const EpisodeSchema = z

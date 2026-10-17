@@ -8,7 +8,7 @@
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { KuleToolName } from "@pilot/shared";
+import { minutesToMs, type KuleToolName } from "@pilot/shared";
 import { KuleError, ValidatingKuleClient } from "./kule.js";
 
 /** MCP istemcisinden yalnız gereken parça (test için daraltıldı). */
@@ -26,7 +26,7 @@ export interface McpToolCaller {
  * en dar seçim 11 dk. Diğerleri 30 sn. Zaman aşımında sonuç belirsizdir; KULE aynı izni ikinci kez açmaz (§9.2-2).
  */
 export const KULE_TIMEOUT_MS = 30_000;
-export const KULE_EXECUTE_TIMEOUT_MS = 11 * 60_000;
+export const KULE_EXECUTE_TIMEOUT_MS = minutesToMs(11);
 
 export class McpKuleClient extends ValidatingKuleClient {
   constructor(private readonly mcp: McpToolCaller) {

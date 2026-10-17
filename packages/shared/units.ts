@@ -244,9 +244,63 @@ export function chainSecFromBigInt(v: bigint): UnixSec {
   return Number(v);
 }
 
+// ─────────────────────────────── Süre ───────────────────────────────
+// Dakika / saat / gün süreleri yalnız buradan saniyeye / ms'ye çevrilir (CLAUDE.md kural 7).
+// Girdi negatif olmayan güvenli tamsayıdır; kesirli süre reddedilir (sessiz yuvarlama yok).
+
+export const MINUTE_SEC = 60;
+export const HOUR_SEC = 60 * MINUTE_SEC;
+export const DAY_SEC = 24 * HOUR_SEC;
+
+function durationSec(n: unknown, unitSec: number, field: string): UnixSec {
+  if (typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) {
+    fail(`${field}: negatif olmayan tamsayı olmalı, gelen: ${String(n)}`);
+  }
+  return assertUnixSec(n * unitSec, field);
+}
+
+export function minutesToSec(minutes: number): UnixSec {
+  return durationSec(minutes, MINUTE_SEC, "dakika");
+}
+
+export function hoursToSec(hours: number): UnixSec {
+  return durationSec(hours, HOUR_SEC, "saat");
+}
+
+export function daysToSec(days: number): UnixSec {
+  return durationSec(days, DAY_SEC, "gün");
+}
+
+export function minutesToMs(minutes: number): UnixMs {
+  return secToMs(minutesToSec(minutes));
+}
+
+export function hoursToMs(hours: number): UnixMs {
+  return secToMs(hoursToSec(hours));
+}
+
+/** Saniye süresi → dakika, YUKARI yuvarlanır (bekleme süresi kısa kesilmez). */
+export function secToMinutesCeil(sec: UnixSec): number {
+  return Math.ceil(assertUnixSec(sec, "saniye") / MINUTE_SEC);
+}
+
+/** İki OKX ms anı arasındaki süre, saniye (kesirli olabilir; ör. kalp atışı yaşı). Geri giden saat reddedilir. */
+export function elapsedSec(fromMs: UnixMs, toMs: UnixMs): number {
+  const d = assertUnixMs(toMs, "toMs") - assertUnixMs(fromMs, "fromMs");
+  if (d < 0) fail(`süre negatif olamaz: ${fromMs} → ${toMs}`);
+  return d / secToMs(1);
+}
+
+/** Gün içi saat → gece yarısından bu yana dakika (18:00 → 1080). */
+export function clockMinutes(hour: number, minute: number): number {
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) fail(`saat: geçersiz ${hour}`);
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) fail(`dakika: geçersiz ${minute}`);
+  return hour * 60 + minute;
+}
+
 // ──────────────────────── Türkiye saati (sabit UTC+3) ────────────────────────
 
-export const TR_UTC_OFFSET_SEC = 3 * 3600;
+export const TR_UTC_OFFSET_SEC = 3 * HOUR_SEC;
 
 export interface TrParts {
   year: number;
@@ -318,12 +372,12 @@ export function cycleIdParts(id: CycleId): { year: number; month: number } {
  */
 export function deadlineEndSec(nowSec: UnixSec, deadlineDay: number): UnixSec {
   const p = trParts(nowSec);
-  return trDateToSec(p.year, p.month, deadlineDay) + 86400;
+  return trDateToSec(p.year, p.month, deadlineDay) + DAY_SEC;
 }
 
 /** Son günün sonuna kalan saat (§10.4 `hoursToDeadline`); geçmişse negatif. */
 export function hoursToDeadline(nowSec: UnixSec, deadlineDay: number): number {
-  return (deadlineEndSec(nowSec, deadlineDay) - nowSec) / 3600;
+  return (deadlineEndSec(nowSec, deadlineDay) - nowSec) / HOUR_SEC;
 }
 
 // ──────────────────────── Türkçe sayı biçimi (gösterim) ────────────────────────

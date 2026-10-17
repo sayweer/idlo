@@ -6,22 +6,9 @@
  * Hesaplayıcı yalnız tam zaman damgasıyla aranan, `ts`'de ya da önce kapanmış mumları okur; ileriye bakmaz.
  * Fail-closed: eksik / bozuk veri ya da şemaya uymayan sonuç WeatherError fırlatır; sınıf uydurulmaz.
  */
-import {
-  EPISODE_DURATION_MS,
-  EpisodeSchema,
-  WeatherSchema,
-  ZD_ALARM,
-  episodeDirOf,
-  pxE6ToPx,
-  pxToPxE6,
-  parseOkxTs,
-  secToMs,
-  type Episode,
-  type PxE6,
-  type StormClass,
-  type UnixMs,
-  type Weather,
-} from "@pilot/shared";
+import { ZD_ALARM, episodeDirOf, type StormClass } from "../codes.js";
+import { EPISODE_DURATION_MS, EpisodeSchema, WeatherSchema, type Episode, type Weather } from "../schemas/weather.js";
+import { clockMinutes, hoursToMs, minutesToMs, pxE6ToPx, pxToPxE6, parseOkxTs, type PxE6, type UnixMs } from "../units.js";
 
 export class WeatherError extends Error {
   constructor(message: string) {
@@ -33,8 +20,8 @@ function fail(message: string): never {
   throw new WeatherError(message);
 }
 
-export const MIN5_MS = secToMs(300);
-export const HOUR_MS = secToMs(3600);
+export const MIN5_MS = minutesToMs(5);
+export const HOUR_MS = hoursToMs(1);
 
 /** §11 eşikleri. */
 export const BTC_CRASH_1H = -1.5; // btc1h ≤ −1,5 → KRIPTO_SISMESI
@@ -157,14 +144,14 @@ export function nyClock(ts: UnixMs): { weekday: number; minutes: number } {
   const hour = Number(get("hour"));
   const minute = Number(get("minute"));
   if (weekday < 0 || !Number.isInteger(hour) || !Number.isInteger(minute)) fail(`New York saati çözülemedi: ${ts}`);
-  return { weekday, minutes: hour * 60 + minute };
+  return { weekday, minutes: clockMinutes(hour, minute) };
 }
 
 export function fxOpen(ts: UnixMs): boolean {
   const { weekday, minutes } = nyClock(ts);
   if (weekday === 6) return false; // cumartesi
-  if (weekday === 0) return minutes >= 18 * 60; // pazar 18:00'den itibaren
-  if (weekday === 5) return minutes < 17 * 60; // cuma 17:00'ye kadar
+  if (weekday === 0) return minutes >= clockMinutes(18, 0); // pazar 18:00'den itibaren
+  if (weekday === 5) return minutes < clockMinutes(17, 0); // cuma 17:00'ye kadar
   return true;
 }
 

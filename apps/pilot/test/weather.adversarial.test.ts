@@ -7,8 +7,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { EPISODE_DURATION_MS, EpisodeSchema, type Episode, type Weather } from "@pilot/shared";
 import {
+  EPISODE_DURATION_MS,
+  EpisodeSchema,
   HOUR_MS,
   MIN5_MS,
   WeatherError,
@@ -18,15 +19,17 @@ import {
   computeWeather,
   fxOpen,
   parseReplay,
-  readReplayFile,
   runReplay,
   stepEpisode,
   utcMs,
   type Candle,
+  type Episode,
   type MarketInput,
   type Metrics,
   type Replay,
-} from "../src/weather/index.js";
+  type Weather,
+} from "@pilot/shared";
+import { readReplayFile } from "../src/weather/index.js";
 
 const REPLAYS = join(dirname(fileURLToPath(import.meta.url)), "../../../data/replays");
 const DAYS = ["2024-08-05", "2025-03-19", "2025-10-10", "2025-12-02", "2026-02-01"] as const;

@@ -1,21 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
+  DAY_SEC,
+  HOUR_SEC,
+  MINUTE_SEC,
   UnitError,
   assertTL,
   cycleIdOf,
   cycleIdParts,
   assertCycleId,
+  clockMinutes,
+  daysToSec,
   deadlineEndSec,
   decimalToScaled,
+  elapsedSec,
   floorToTick,
   formatDecimalTr,
   formatPxTr,
   formatTL,
   halfTL,
   hoursToDeadline,
+  hoursToMs,
+  hoursToSec,
   isOnTick,
   limitBuySz,
   marketBuySzTL,
+  minutesToMs,
+  minutesToSec,
   msToSec,
   notionalDeviationBps,
   notionalTLE6,
@@ -25,6 +35,7 @@ import {
   pxE6ToPx,
   pxToPxE6,
   scaledToDecimal,
+  secToMinutesCeil,
   secToMs,
   tlFromChain,
   tlToChain,
@@ -154,6 +165,50 @@ describe("Zaman: zincir saniye ↔ OKX ms", () => {
     expect(() => secToMs(1.5)).toThrow(UnitError);
     expect(() => msToSec(Number.NaN)).toThrow(UnitError);
     for (const bad of ["", "-1", "1.5", "abc", "12345678901234567"]) expect(() => parseOkxTs(bad)).toThrow(UnitError);
+  });
+});
+
+describe("Süre: dakika / saat / gün → saniye / ms (kural 7)", () => {
+  it("sabitler ve dönüşümler", () => {
+    expect([MINUTE_SEC, HOUR_SEC, DAY_SEC]).toEqual([60, 3600, 86400]);
+    expect(minutesToSec(15)).toBe(900);
+    expect(hoursToSec(2)).toBe(7200);
+    expect(daysToSec(90)).toBe(7776000);
+    expect(minutesToMs(5)).toBe(300000);
+    expect(hoursToMs(6)).toBe(21600000);
+    expect(minutesToSec(0)).toBe(0);
+  });
+  it("U-13 (birim düzeyi) 12 dk açılış payı = 720 sn", () => {
+    expect(minutesToSec(12)).toBe(720);
+  });
+  it("kesirli / negatif / sayı olmayan süre reddedilir (sessiz yuvarlama yok)", () => {
+    for (const f of [minutesToSec, hoursToSec, daysToSec, minutesToMs, hoursToMs]) {
+      for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "5" as unknown as number]) {
+        expect(() => f(bad)).toThrow(UnitError);
+      }
+    }
+  });
+  it("secToMinutesCeil yukarı yuvarlar (bekleme kısa kesilmez)", () => {
+    expect(secToMinutesCeil(0)).toBe(0);
+    expect(secToMinutesCeil(60)).toBe(1);
+    expect(secToMinutesCeil(61)).toBe(2);
+    expect(secToMinutesCeil(7200)).toBe(120);
+    expect(() => secToMinutesCeil(-1)).toThrow(UnitError);
+    expect(() => secToMinutesCeil(1.5)).toThrow(UnitError);
+  });
+  it("U-8 (birim düzeyi) kalp atışı yaşı: ms farkı → kesirli saniye; geri giden saat reddedilir", () => {
+    expect(elapsedSec(1722820500000, 1722820545000)).toBe(45);
+    expect(elapsedSec(1722820500000, 1722820500250)).toBe(0.25);
+    expect(elapsedSec(1722820500000, 1722820500000)).toBe(0);
+    expect(() => elapsedSec(1722820500001, 1722820500000)).toThrow(UnitError);
+    expect(() => elapsedSec(-1, 0)).toThrow(UnitError);
+  });
+  it("clockMinutes: gün içi saat → dakika; geçersiz saat reddedilir", () => {
+    expect(clockMinutes(0, 0)).toBe(0);
+    expect(clockMinutes(17, 0)).toBe(1020);
+    expect(clockMinutes(18, 0)).toBe(1080);
+    expect(clockMinutes(23, 59)).toBe(1439);
+    for (const [h, m] of [[24, 0], [-1, 0], [12, 60], [1.5, 0]] as const) expect(() => clockMinutes(h, m)).toThrow(UnitError);
   });
 });
 
