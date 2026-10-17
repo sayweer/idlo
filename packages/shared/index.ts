@@ -11,3 +11,5 @@ export * from "./tools/kule.js";
 export * from "./tools/pilot.js";
 export * from "./deployments.js";
 export * from "./authz.js";
+export * from "./weather/index.js";
+export * from "./plan/index.js";

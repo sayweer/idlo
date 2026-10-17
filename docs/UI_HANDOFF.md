@@ -64,41 +64,66 @@ Genel kurallar her ekran için geçerlidir:
    - Bozuk JSON'da **bir kez** yeniden denenir, olmazsa hata döner (L-4).
    - LLM yalnız çıkarır, sayı uydurmaz (L-3).
    - Route LLM istemcisini **enjekte edilebilir** alır (test için).
-3. **Kural Kartı** — alanlar `PLAN_DRAFT_FIELDS` sırasıyla gelir. Her satırda **değer**, **kaynak rozeti** ve **düzenlenebilirlik** görünür.
-   - Kaynak `user` ise rozet "senin cümlenden", `default` ise "varsayılan" olur. Elle düzeltilen alan şemada yine `source:"user"` taşır (doğrulama geçsin), ama UI bunu **yerelde işaretler** ve rozeti "senin düzeltmen" gösterir. Üç rozet **ayrı renkte**, hiçbiri kırmızı değil. TODO(spec): SPEC düzeltme kaynağını adlandırmıyor; "senin cümlenden" demek yanlış bilgi olur (§2.1, L-3).
-   - **Düzenlenebilir alanlar:** `cycleTL`, `startDay`, `deadlineDay`, `maxOrderTL`, `askOnAmbiguity`, `maxWaitH`, `expiresInDays`. Düzenleme sonrası taslak yeniden `PlanDraftSchema` ile doğrulanır.
-   - **Kodla türetilen, düzenlenemez alanlar** "otomatik" etiketiyle salt-okunur gösterilir:
-     - `agent`, `kule`, `agentId` (`fuji.json`'dan — **PLANLI**, bkz. §3.3; şu an şemada `agent`/`kule` yok)
-     - `bandBps` = 0 ("fiyat bandı kapalı"), `closedBandBps` = 500
-     - `askMode` (`askOnAmbiguity`'den 0/1)
-     - `expiresAt` (bkz. §3.1 `draftToPlan`; mevcut plan varsa onunla sınırlanır)
+3. **Kural Kartı** — alanlar `PLAN_DRAFT_FIELDS` sırasıyla gelir. Her satırda **değer** ve **kaynak rozeti** görünür (`user` → "senin cümlenden", `default` → "varsayılan"). Kart okumak içindir; **düzeltme kartta değil, onay penceresinde yapılır** (adım 4).
    - **"PİLOT ne yapabilir / ne yapamaz"** kutusu §4 katman tablosundan türetilir. TODO(spec): SPEC tam metin vermiyor; aşağıdakini kullan.
      - Yapabilir: "Ne zaman, ne kadar ve hangi emir türüyle alınacağına karar verir; Türkçe gerekçe yazar; emin değilse sana sorar."
      - Yapamaz: "Kontrat izni olmadan emir verdiremez; planın dışında tutar isteyemez; para çekemez (çekim yetkisi yoktur); senin anahtarını görmez."
-   - **Sorular** (`draft.questions`) kartın üstünde, her biri için bir cevap kutusuyla listelenir.
-4. **"Cüzdanla imzala"** düğmesi.
-   - **Açılış koşulu** (hepsi): `isPlanDraftSignable(draft) === true`; `fuji.json` geçerli; `agent`, `kule` **ve** `agentId` üçü de mevcut. Biri yoksa düğme kapalı ve "PİLOT kaydı bekleniyor" yazar. `agentId="0"` ile **imzalatma**: sonradan düzeltmek F-4 yüzünden her zaman 24 saat bekletir.
-   - "Sorular cevaplanmadan kart imzaya açılmaz" (§10.6, §16 #8). **Tek yol:** cevaplar `answers` ile yeniden `/api/plan/draft`'a gönderilir ve yeni taslak gelir. Elle alan doldurmak soruyu kapatmaz (`questions` hiçbir alana bağlı değil). TODO(spec): soru başına alan anahtarı gerekiyorsa shared'e eklenir.
-   - **İmzadan önce:** UI, kontratın `_validate` kurallarını önceden uygular (§3.4) ve "anında geçerli" / "24 saat sonra geçerli" tahminini söyler.
-   - **İmza:** `writeContract(setPlan, [planToChain(plan)])`.
+   - **Sorular** (`draft.questions`) kartın üstünde, her biri için bir cevap kutusuyla listelenir. "Sorular cevaplanmadan kart imzaya açılmaz" (§10.6, §16 #8). **Tek yol:** cevaplar `answers` ile yeniden `/api/plan/draft`'a gönderilir ve yeni taslak gelir. Elle alan doldurmak soruyu kapatmaz (`questions` hiçbir alana bağlı değil; `QUESTIONS_OPEN` engeli kalır). TODO(spec): soru başına alan anahtarı gerekiyorsa shared'e eklenir.
+   - Kartın altında **"İmzaya geç"** düğmesi onay penceresini açar. Pencere sorular açıkken de açılabilir (değerleri görmek için), ama imza düğmesi kapalı kalır.
+
+4. **Onay penceresi — "Zincire yazılacak değerler"** (ekip kararı; TODO(spec): SPEC pencereyi tanımlamıyor). İmzadan önceki **tek** ekran; `setPlan`'a gidecek değerlerin **tamamını** gösterir ve düzeltmeye izin verir.
+   - **Kurulum:** `const conf = buildPlanConfirmation(draft, { nowSec, deployments, current, currentActive })` (`@pilot/shared`, §3.1).
+     - `nowSec`: `msToSec(Date.now())` (zincir saniyesi).
+     - `deployments`: `parseDeployments(fuji.json)`; okunamadıysa `null` (pencere `NO_DEPLOYMENT` gösterir).
+     - `current`: `planFromChain(plans(user))`; zincir okunamadıysa pencereyi **açma** (tahmin yapılamaz, fail-closed). Hiç plan yoksa `null` ya da `agent == 0x0` olan kayıt (ikisi de "plan yok").
+     - `currentActive`: `isPlanActive(user)` (zorunlu `boolean`; `current` varken eksikse fırlatır). İptal ya da süresi dolmuş plan yine `current` olarak verilir (karşılaştırma tabanı); bu bayrak yalnız tahmin metnini doğru kurar. Okunamadıysa pencereyi açma.
+     - Geçersiz taslak ya da `nowSec` fırlatır: "Taslak doğrulanamadı, tekrar dene." Taslak zaten `PlanDraftSchema`'dan geçtiyse olmaz.
+   - **Başlık:** `conf.titleTr` ("Zincire yazılacak değerler"). `/talimat?demo=1` ise başlığın yanında **"DEMO PLANI"** etiketi.
+   - **Satırlar:** `conf.rows` — `IFlightPlan.Plan`'ın 12 alanı, §8.1 sırasıyla (`PLAN_FIELDS`). Satır eklenmez, çıkarılmaz, sıra değişmez. Her satırda:
+     - `labelTr` (ör. "Aylık çevrilecek tutar") ve `displayTr` (Türkçe biçim: "20.000 TL", "Ayın 1. günü", "72 saat", "Kapalı", "%5", "15.01.2027 12:00 (TR saati) · 90 gün", adres, "#17"). Değer kurulamadıysa "—".
+     - `chainValue` küçük, eş aralıklı yazıyla ("zincire giden değer": "20000", `expiresAt` için unix saniye, checksum'lı adres). Bu metin `setPlanArgs[0][field]`'ın kendisidir; UI kendi hesaplamaz.
+     - `badgeTr` rozeti: "senin cümlenden" (`user`), "varsayılan" (`default`), **"senin düzeltmen"** (`edited`), "otomatik" (kodun türettiği, `editable=false`; ayrıca kırpılmış varsayılan süre, bkz. `expiresAt` düzeltmesi). Dört rozet **ayrı renkte**, hiçbiri kırmızı değil. Demo planında rozetlerin yanında "DEMO PLANI".
+     - `note` (bilgi, nötr renk): "Kod tarafından belirlenir; düzenlenemez.", "Mevcut planından gevşek: bu değişiklik 24 saat bekletir.", "Mevcut planından farklı: bu alan değişirse plan her zaman 24 saat bekler." (F-4), "Varsayılan süre mevcut planının bitişiyle sınırlandı; böylece plan anında geçer. Daha geç bitiş istersen gün sayısını düzelt; bu 24 saat bekletir.", "Mevcut planının süresi doldu; yeni bitiş her zaman daha geç olduğundan plan 24 saat bekler."
+     - `error` (alan hatası; kırmızı **değil**, uyarı rengi — kırmızı yalnız ret ve alarm, §13): ör. "Tek emir tavanı aylık tutarı aşamaz."
+   - **Düzenlenebilir satırlar** (`editable=true`, `EDITABLE_PLAN_FIELDS`): `cycleTL`, `maxOrderTL`, `startDay`, `deadlineDay`, `maxWaitH`, `askMode`, `expiresAt`. Diğerleri (`bandBps`, `closedBandBps`, `agent`, `kule`, `agentId`) salt-okunur, "otomatik".
+   - **Düzeltme akışı:** satırdaki "Düzelt" → satır içi giriş → "Uygula" → `conf = applyEdit(conf, field, value)`. Pencere her düzeltmede **baştan** doğrulanır (zod + `FlightPlan._validate` kuralları + §8.2 tahmini); UI ayrıca doğrulama yazmaz.
+     - Giriş biçimi: TL / gün / saat alanlarında **ham metin** (`input.value`) olduğu gibi verilir; `Number()` ile çevirme ("20.000" → 20 olur). Yalnız rakam kabul edilir; "20.000", "1,5", "-3" alan hatası verir.
+     - `askMode`: evet/hayır anahtarı → `boolean`.
+     - `expiresAt`: "kaç gün geçerli" girişi (1–365) → gün sayısı. Elif'in cümlesinden ya da düzeltmesinden gelen süre **olduğu gibi** imzalatılır; mevcut planın bitişinden geçse 24 saat bekler (F-3). Yalnız **varsayılan** süre (90 gün), mevcut plan sürüyorsa onun bitişiyle sınırlanır: satır "otomatik" rozeti ve not taşır, "· N gün" eki gösterilmez. TODO(spec): kırpma ekip kararı. (Taslaktaki değere eşit düzeltme, ör. yine 90, asıl rozetine döner ve kırpılır.)
+     - Asıl değere geri dönülen alan asıl rozetine döner.
+     - Düzeltme taslaktaki `questions`'ı kapatmaz.
+   - **Engeller** (`conf.blockers`, imza düğmesinin üstünde liste; `field` doluysa ilgili satıra kaydır):
+     - `QUESTIONS_OPEN` — "Önce PİLOT'un sorularını cevapla; …"
+     - `MISSING_VALUE` / `INVALID_VALUE` — satırdaki `error` ile aynı metin.
+     - `INVALID_DRAFT` / `INVALID_PLAN` — "Değerler plan şemasına uymuyor; taslağı yeniden oluştur." / "Kontrat bu planı kabul etmez (InvalidPlan)."
+     - `NO_DEPLOYMENT` — "Kontrat adresi okunamadı; imza kapalı."
+     - `NO_AGENT_ID` — "PİLOT kaydı bekleniyor; imza kapalı." (`agentId` yok ya da `"0"`: sonradan düzeltmek F-4 yüzünden her zaman 24 saat bekletir.)
+   - **Anında / 24 saat tahmini** (`conf.activation`, plan tam kurulduysa): `textTr` imza düğmesinin hemen üstünde. `immediate=false` ise `loosened` alanları listelenir ve `activeAtSec` TR saatiyle gösterilir ("… 18.10.2026 12:00 (TR saati) geçerli olur. O zamana kadar mevcut planın geçerli."). Mevcut plan etkin değilse metin bunu söyler: "Mevcut planının süresi doldu; …" ya da "Mevcut planın durduruldu; …" + "O zamana kadar PİLOT alım yapamaz." UI metni kendisi kurmaz.. Altında küçük not: "Tahmindir; gerçek sonuç zincirdeki PlanSet olayıdır."
+   - **"Cüzdanla imzala"** (pencerenin içinde; **imza yalnız bu pencereden** yapılır, kartta ya da başka ekranda setPlan düğmesi yok):
+     - Açılış koşulu: `conf.signable === true` (bu, `setPlanArgs !== null` demektir). Ayrıca doğru ağ (43113) ve bağlı cüzdan.
+     - Çağrı: `writeContract({ address: deployments.flightPlan, abi, functionName: "setPlan", args: conf.setPlanArgs })`. `args` **başka hiçbir yerden** kurulmaz: `planToChain`'i, `draft`'ı ya da form durumunu imza için yeniden kullanma. Pencerede görünmeyen değer zincire gitmez.
+     - Düğmeye basılınca pencere kilitlenir (düzeltme kapalı) ve aynı `conf` nesnesi kullanılır; cüzdan reddederse kilit açılır.
+     - Pencere uzun süre açık kaldıysa (öneri: 10 dk) ya da `plans(user)` değiştiyse (`PlanSet`/`PlanRevoked` olayı) "Değerler eskidi, yenile" gösterilir ve `buildPlanConfirmation` yeniden çağrılır; düzeltmeler `applyEdit` ile yeniden uygulanır. TODO(spec): eşik SPEC'te yok.
 5. **Sonuç:**
-   - `PlanSet(user, planHash, immediate, activeAt)` olayı gösterilir: "Uçuş Planı zincire yazıldı — anında geçerli" ya da "… 24 saat sonra geçerli (<TR saati>)".
+   - `PlanSet(user, planHash, immediate, activeAt)` olayı gösterilir: "Uçuş Planı zincire yazıldı — anında geçerli" ya da "… 24 saat sonra geçerli (<TR saati>)". Tahminle olay farklıysa **olay** gösterilir.
    - Snowtrace bağlantısı ve kesinleşme süresi (§3.5 ölçümü) gösterilir.
    - `PendingCleared` olayı da geldiyse "bekleyen gevşek plan silindi" notu eklenir.
 
 **Durumlar:**
 - **Yükleniyor:** "PİLOT cümleni okuyor…"
-- **LLM yok:** sunucu bileşeni yalnız `ANTHROPIC_API_KEY`'in **var olup olmadığına** bakar; yoksa cümle kutusu baştan kapalıdır. Route ağ hatası / 5xx / 401 dönerse de aynı durum: "LLM yok, kural modu — yeni plan şu an oluşturulamaz" (§16 #13). Elle form **yazma**, çünkü SPEC bunu öngörmüyor.
+- **LLM yok:** sunucu bileşeni yalnız `ANTHROPIC_API_KEY`'in **var olup olmadığına** bakar; yoksa cümle kutusu baştan kapalıdır. Route ağ hatası / 5xx / 401 dönerse de aynı durum: "LLM yok, kural modu — yeni plan şu an oluşturulamaz" (§16 #13). Elle form **yazma**, çünkü SPEC bunu öngörmüyor (onay penceresindeki düzeltme yalnız LLM taslağı üstünde çalışır).
 - **Taslak çıkarılamadı:** iki kez şema hatası (L-4) → "Taslak çıkarılamadı, tekrar dene." Route hata türünü (`llm_unavailable` / `invalid_output`) ayrı döner.
-- **`fuji.json` yok/geçersiz** (`parseDeployments` hata atar): imza kapalı, "Kontrat adresi okunamadı".
-- **Cüzdan reddetti:** nötr bilgi gösterilir, kırmızı değil.
-- **`InvalidPlan` revert:** Türkçe hata, kırmızı değil. Revert bir "ret" değildir, bkz. §3.4.
+- **`fuji.json` yok/geçersiz** (`parseDeployments` hata atar): `deployments: null` ile pencere açılır, `NO_DEPLOYMENT` engeli, imza kapalı.
+- **Zincir okunamadı** (`plans(user)`): pencere açılmaz, "Mevcut plan okunamadı; anında/24 saat tahmini yapılamaz" (gri).
+- **Düzeltme hatası:** satırda `error`, engel listesinde aynı metin, imza kapalı; düzeltilince kendiliğinden açılır.
+- **Cüzdan reddetti:** nötr bilgi gösterilir, kırmızı değil; pencere açık kalır.
+- **`InvalidPlan` revert:** Türkçe hata, kırmızı değil. Revert bir "ret" değildir, bkz. §3.4. (Pencere aynı kuralları önceden uyguladığı için olmamalı; olursa `nowSec` eskimiştir → yenile.)
 
 **Demo planı (§19):** sahne **canlı LLM ile** oynanır. Bunun için 300 / 150 / 15 / 25 değerlerini üreten bir demo cümlesi gerekir; Elif'in §1 cümlesi 1–5 penceresini verir ve bugün (17'si) `OUTSIDE_WINDOW` olur. Öneri (Seyit onaylasın, TODO(spec)): "Her ayın 15'inde maaşım yatıyor, 300 lirasının en geç 25'ine kadar dolara çevrilmesini istiyorum, tek seferde 150 liradan fazla harcama, emin olmazsan bana sor."
-- **Yedek — "Demo planı yükle"** (`/demo` → `/talimat?demo=1`): LLM'i atlar. Kart 300 / 150 / 15 / 25 ile, kalanlar `PLAN_DEFAULTS` ve `askOnAmbiguity=true` ile dolar. Şema gereği alanlar `source:"user"` taşır; kartın başlığında ve her rozette **"DEMO PLANI"** görünür. İmza yine Elif'in cüzdanındadır. TODO(spec).
+- **Yedek — "Demo planı yükle"** (`/demo` → `/talimat?demo=1`): LLM'i atlar. Kart 300 / 150 / 15 / 25 ile, kalanlar `PLAN_DEFAULTS` ve `askOnAmbiguity=true` ile dolar. Şema gereği alanlar `source:"user"` taşır; kartın başlığında ve her rozette **"DEMO PLANI"** görünür. Bu taslak da **aynı onay penceresinden** (`buildPlanConfirmation`) geçer; imza yine Elif'in cüzdanında ve yalnız penceredeki `setPlanArgs` ile. TODO(spec).
 
 - **Demo:** 0:45–2:00 (CANLI). Akış: cümle → kart (kaynaklar, yapabilir/yapamaz) → imza → Snowtrace'te `PlanSet`. Ayrıca belirsiz cümle ("Maaşımın çoğu") ile imza düğmesinin kapalı kaldığı gösterilebilir. Bu imza **plansız** bir cüzdanla "anında" çıkar (bkz. §3.4, §6.1 E2).
-- **Testler:** L-2 ve L-4 sahte LLM istemcisiyle (deterministik). L-1 ve L-3 için anahtar varsa çalışan, adında "CANLI" geçen ve anahtar yoksa atlanan testler. Ayrıca §16 #8, #13.
+- **Testler:** L-2 ve L-4 sahte LLM istemcisiyle (deterministik). L-1 ve L-3 için anahtar varsa çalışan, adında "CANLI" geçen ve anahtar yoksa atlanan testler. Ayrıca §16 #8, #13. Pencere mantığının testleri shared'dedir (`packages/shared/test/confirm.test.ts`: L-1, §19 demo planı, düzeltmeler, geçersiz düzeltme, F-2/F-3/F-4 tahmini); web testi yalnız şunu doğrular: imza çağrısının `args`'ı `conf.setPlanArgs` ile aynı nesnedir ve `signable=false` iken düğme kapalıdır.
 
 ### 2.3 `/panel` — ajan kendi başına (D2, ŞART; Barış destek)
 - **Amaç:** PİLOT'un her turunu, Lira Hava Durumu'nu, döngü ilerlemesini, soruları, retleri ve KULE sağlığını tek ekranda göstermek. Agentic puanı ve Q1/Q4 burada kazanılır.
@@ -205,15 +230,18 @@ Bölümler ve veri kaynakları:
 
 ### 2.6 `/agent.json` — ERC-8004 kayıt dosyası (A3'e bağımlı)
 - **Uygulama:** Route handler (`src/app/agent.json/route.ts`) ya da `public/agent.json`.
-- **Alanlar (§8.5):**
-  - `type`, `name:"PİLOT"`, `description`, `image` (`public/` altına basit bir görsel)
-  - `services:[{name:"MCP", endpoint:<servis MCP URL'si>}]` — SPEC'te servisin MCP yolu yok, yalnız `/a2mcp/*` HTTP uçları var. Yol Barış'a sorulur (ör. `https://servis.ALANADI.com/mcp`). TODO(spec).
-  - `active`
-  - `registrations:[{agentId, agentRegistry:"eip155:43113:0x8004A818BFB912233c491871b3d84c89A494BD9e"}]`
-  - `supportedTrust`
-- **URL sabitliği:** URL **A3'ten önce sabit olmalı**, çünkü `register-agent.ts` `agentURI = https://<web>/agent.json` kullanır. Web'in barınağı (§6.2 #5) belli olunca Seyit'e bildir.
+- **Biçim sabit:** Yayındaki dosyanın şekli tam olarak `data/agent-card/agent.json` olmalı; yalnız `ALANADI` geçen iki URL gerçek adreslerle değişir. `register-agent.ts` (A3) kayıttan önce bu adresi indirir ve aşağıdaki kurallara uymazsa **kayıt yapmaz**. Şema: `scripts/lib/agentCard.ts` → `AgentCardSchema` (yalnız okuma için; web bu dosyayı içe aktaramaz, çünkü `@pilot/scripts` web'in bağımlılığı değil ve derlenmiş çıktısı yok. Değerleri kopyala.)
+- **Alanlar (§8.5) ve A3'ün zorladığı değerler:**
+  - `type`: tam olarak `"https://eips.ethereum.org/EIPS/eip-8004#registration-v1"` [DOĞRULA]. Başka değer → ret.
+  - `name`: tam olarak `"PİLOT"`. `description`: boş olmayan metin (şablondakini kullan).
+  - `image`: `https://` URL'si (`public/` altına basit bir görsel).
+  - `services`: **tam bir** öğe, yalnız iki anahtarla: `[{"name":"MCP","endpoint":"https://…"}]`. Fazladan anahtar ya da ikinci servis → ret. SPEC'te servisin MCP yolu yok, yalnız `/a2mcp/*` HTTP uçları var. Yol Barış'a sorulur (ör. `https://servis.<alan>/mcp`). TODO(spec).
+  - `active`: boolean (`true`).
+  - `registrations`: kayıttan **önce** `[]`. Kayıttan sonra en fazla bir öğe, yalnız iki anahtarla: `[{"agentId": 41, "agentRegistry":"eip155:43113:0x8004A818BFB912233c491871b3d84c89A494BD9e"}]`. `agentId` **JSON sayısıdır** (string değil; `fuji.json.agentId` string'ini `Number(...)` ile çevir, `Number.MAX_SAFE_INTEGER` üstü → yayınlama) [DOĞRULA].
+  - `supportedTrust`: tam olarak `["reputation"]` [DOĞRULA]. Başka değer (ör. `"crypto-economic"`) → ret.
+  - Bilinmeyen üst düzey alan eklemek serbest, ama dosyanın hiçbir yerinde `ALANADI` kalmamalı.
+- **URL sabitliği:** URL **A3'ten önce sabit ve yayında olmalı**, çünkü `register-agent.ts` `agentURI = https://<web>/agent.json` değerini zincire kalıcı yazar. URL kanonik yazılmalı: küçük harfli alan adı, port yok (443), yol tam `/agent.json`, sorgu/parça/sonda `?` yok. Web'in barınağı (§6.2 #5) belli olunca Seyit'e bildir.
 - **`agentId`:** kayıttan önce bilinmez. Route handler `fuji.json`'dan okur; yoksa `registrations:[]`.
-- TODO(spec): `type`/`supportedTrust` değerleri SPEC'te verilmiyor; ERC-8004 kayıt dosyası standardındaki değerleri kullan ve [DOĞRULA].
 
 ### 2.7 `/servis` — OKX.AI servislerinin canlı denemesi (D4, OLMALI)
 **Emir Denetimi formu:**
@@ -282,6 +310,7 @@ Bölümler ve veri kaynakları:
 | Kodlar | `rejectCodeName`, `RejectCode`, `REJECT_CODE_NAMES`, `ordTypeFromChain`, `execStatusFromChain`, `actionStateFromChain`, `AskMode`, `HEALTH_STATES`, `KULE_MODES`, `WEATHER_CLASSES`, `ZD_ALARM`, `clOrdIdFor` |
 | Türkçe metin | `REJECT_TEXTS`/`rejectText`, `VERDICT_TEXTS`, `HEALTH_TEXTS`, `HEALTH_REASON_TEXTS`, `kuleReasonText`, `WEATHER_CLASS_TEXTS`, `ORD_TYPE_TEXTS`, `EXEC_STATUS_TEXTS`, `MODE_LABELS`, `DEMO_LABELS`, `optionText`, `quoteReadback`, `DATA_DISCLAIMER`, `STOLEN_KEY_MESSAGE`, `INJECTION_NOTE` |
 | Plan | `PlanDraftSchema`, `PlanDraft`, `PLAN_DRAFT_FIELDS`, `DRAFT_SOURCES`, `isPlanDraftSignable`, `PLAN_DEFAULTS`, `PLAN_DAY_MIN`/`PLAN_DAY_MAX` (1–28), `PLAN_EXPIRES_MAX_DAYS`, `PlanSchema`, `planToChain`, `planFromChain`, `CycleSchema`, `cycleFromChain`, `buyActionFromChain` |
+| Plan onayı (`plan/confirm.ts`, §2.2 adım 4) | `buildPlanConfirmation`, `applyEdit`, `PlanConfirmation`, `PlanConfirmationContext`, `ConfirmRow`, `ConfirmBlocker`, `ConfirmBlockerCode`, `ActivationPreview`, `RowSource`, `PLAN_FIELDS`, `EDITABLE_PLAN_FIELDS`, `EditablePlanField`, `PLAN_FIELD_LABELS_TR`, `CONFIRM_BADGES_TR`, `CONFIRM_TITLE_TR`, `PENDING_DELAY_SEC` |
 | Hava | `WeatherSchema`, `Weather`, `EpisodeSchema`, `EPISODE_DURATION_MS`, `WEATHER_SOURCES` |
 | İz/araçlar | `TraceSchema`, `Trace`, `TraceStepSchema`, `MAX_TOOL_CALLS_PER_TURN`, `PILOT_TOOLS`, `PILOT_TOOL_NAMES`, `IzinIsteOutputSchema`, `KullaniciyaSorInputSchema`, `KullaniciyaSorOutputSchema`, `HaberleriOkuOutputSchema`, `EkonomikTakvimOutputSchema`, `BekleOutputSchema`, `KuralDanisOutputSchema` |
 | Seçenekler | `parseOptionId`, `isOptionId`, `buyOptionId`, `OptionIdSchema`, `OptionSchema` |
@@ -289,10 +318,12 @@ Bölümler ve veri kaynakları:
 | Dağıtım | `parseDeployments`, `DeploymentsSchema`, `FUJI_CHAIN_ID`, `ERC8004_FUJI` |
 
 **Shared'de eksik olanlar** — web'de yerel yaz ve `TODO(spec): shared'e taşı` notu düş. Shared'i değiştirmek ekibin ortak işidir; Seyit/Barış'a söyle.
-- **`draftToPlan(draft, deployments, nowSec, existing?: Plan): Plan`.** Türetilen alanlar: `agent`, `kule`, `agentId`, `bandBps=0`, `closedBandBps=500`, `askMode`, `expiresAt`. `PlanSchema.parse` ile biter.
-  - `expiresAt` = `nowSec + expiresInDays·86400`; ama `existing` varsa ve `existing.expiresAt > nowSec` ise **`min(…, existing.expiresAt)`**. Kartta "süre mevcut planla sınırlandı; uzatmak 24 saat bekler" notu. Süresi dolmuş plan üstüne her yeni plan 24 saat bekler (kontrat davranışı).
-  - `agent`/`kule`/`agentId` yoksa hata atar (imza kapalı, §2.2).
-  - **Test et:** L-1 cümlesinin taslağından beklenen `Plan`; `existing` ile aynı değerler + düşük `cycleTL` → tahmin = anında.
+- ~~`draftToPlan`~~ **artık shared'de: `buildPlanConfirmation`** (yerel yazma). Web'de taslaktan `Plan`/`setPlan` argümanı kuran başka kod olmamalı.
+  - İmza: `buildPlanConfirmation(draft: PlanDraft, ctx: { nowSec, deployments: Pick<Deployments,"pilotAgent"|"kuleReporter"|"agentId"> | null, current: Plan | null, currentActive: boolean }): PlanConfirmation`; düzeltme: `applyEdit(conf, field: EditablePlanField, value: unknown): PlanConfirmation`. İkisi de saf (ağ, disk, saat yok) ve tarayıcıda güvenli.
+  - Dönen: `setPlanArgs: readonly [ChainPlan] | null` (viem `writeContract` `args`'ı; uint64/uint256 `bigint`, uint8/16 `number`; donmuş nesne; yalnız `signable` iken dolu), `rows` (§2.2 adım 4), `signable`, `blockers`, `activation` (§8.2 tahmini), `questions`.
+  - Türetilen alanlar: `agent` = `pilotAgent`, `kule` = `kuleReporter` (checksum'lı), `agentId` (yok ya da `"0"` → `NO_AGENT_ID`), `bandBps=0`, `closedBandBps=500`, `askMode` = `askOnAmbiguity ? 1 : 0`, `expiresAt` = `nowSec + daysToSec(expiresInDays)`; yalnız süre kaynağı `default` iken ve `current.expiresAt > nowSec` ise `min(…, current.expiresAt)` (rozet "otomatik", satır notu); `user`/`edited` süre kırpılmaz.
+  - Doğrulama: her hesapta `PlanDraftSchema` (düzeltilen alan şemaya `source:"user"` olarak gider) + `PlanSchema` + `FlightPlan._validate`'in kuralları (§3.4). Tahmin `_isTighterOrEqual` ile alan alan aynıdır (`closedBandBps` dahil).
+  - `ChainPlan` (`schemas/plan.ts`) tipi de kökten dışa açıktır.
 - **Kontrat özel hatalarının Türkçe metinleri:** `InvalidPlan`, `NoPlan`, `NoPendingPlan`, `PendingNotReady`, `CycleNotOver`, `CycleAlreadyClosed`, `ActionNotAuthorized`, `ReportWindowOpen` …
 - **`EXEC_STATUS_TEXTS.NOT_PLACED`**, **`formatPxNumTr`**, **`formatFinalityTr(ms)`** (isteğe bağlı kolaylık).
 - **PİLOT besleme zarfları:** §4.
