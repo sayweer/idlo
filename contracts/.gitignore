@@ -1,0 +1,11 @@
+# Foundry derleme çıktıları
+out/
+cache/
+broadcast/*/31337/
+broadcast/**/dry-run/
+
+# Bağımlılıklar git'e girmez; kurulum için README'ye bak (forge install --no-git ...)
+lib/
+
+# Anahtarlar asla git'e girmez
+.env
