@@ -1,7 +1,8 @@
 [profile.default]
 src = "src"
 out = "out"
-libs = ["lib"]
+# Solidity bağımlılıkları pnpm ile kurulur (contracts/package.json); lib/ kullanılmaz.
+libs = ["node_modules"]
 test = "test"
 script = "script"
 # §7: Solidity ^0.8.24. OZ 5.7 bazı dosyalarında ^0.8.27 istediği için 0.8.28'e sabitlendi.

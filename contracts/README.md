@@ -4,12 +4,25 @@ Tek doğru kaynak: `../docs/SPEC.md` §8.
 
 ## Kurulum
 
-Bağımlılıklar git'e girmez (`lib/` yok sayılır). Bir kez kur:
+Solidity bağımlılıkları pnpm çalışma alanından npm paketi olarak gelir (`lib/` ve `forge install` kullanılmaz).
+Sürümler `package.json`'da tam olarak sabitlidir, `pnpm-lock.yaml` ile kilitlidir:
+
+| Paket | Sürüm | Kaynak |
+|---|---|---|
+| `@openzeppelin/contracts` | 5.7.0 | npm |
+| `solady` | 0.1.26 | npm |
+| `forge-std` | v1.17.0 | `github:foundry-rs/forge-std#v1.17.0` (npm'deki `forge-std` 1.1.2'de kaldı) |
+
+Depo kökünde bir kez kur, sonra derle:
 
 ```bash
-cd contracts
-forge install --no-git foundry-rs/forge-std OpenZeppelin/openzeppelin-contracts@v5.7.0 vectorized/solady@v0.1.26
+pnpm install          # kökte; contracts/node_modules'u da doldurur
+cd contracts && forge build
 ```
+
+`remappings.txt` `node_modules/...` yollarını gösterir; `foundry.toml`'da `libs = ["node_modules"]`.
+forge-std v1.17.0 Foundry 1.7 ile doğrulandı. Sürüm yükseltirken `package.json`'daki sürümü değiştir,
+`pnpm install` çalıştır ve `forge test` ile doğrula.
 
 ## Komutlar
 
