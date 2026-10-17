@@ -209,7 +209,7 @@ export class ViemKuleChain implements KuleChain {
 
   async blockNumber(): Promise<number> {
     try {
-      return Number(await this.pub.getBlockNumber());
+      return Number(await this.pub.getBlockNumber({ cacheTime: 0 }));
     } catch (e) {
       throw new ChainUnreadableError("blok numarası okunamadı", { cause: e });
     }
@@ -272,9 +272,10 @@ export class ViemKuleChain implements KuleChain {
   }
 
   private async scanOnce(): Promise<void> {
+    // cacheTime: 0 — viem blok numarasını varsayılan olarak önbellekler; PİLOT requestBuy sonrası hemen çağırdığı için bayat baş izni kaçırırdı.
     let head: bigint;
     try {
-      head = await this.pub.getBlockNumber();
+      head = await this.pub.getBlockNumber({ cacheTime: 0 });
     } catch (e) {
       throw new ChainUnreadableError("blok numarası okunamadı", { cause: e });
     }
