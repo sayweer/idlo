@@ -51,7 +51,16 @@ cd contracts && forge build && forge test && cd ..
 
 ## 5. Açık sorular / karar bekleyenler
 
-- **Hikâye/pivot (en önemli):** "Elif TL→dolar" hikâyesi zayıf bulundu. Masadaki yeni fikir:
+- **KARAR (2026-10-17, Seyit onayladı): Ajan seçme sohbeti + ERC-8004 eşiği MVP'si yapılacak** (ekibe haber verilecek; SPEC §22 "pazaryeri/iki kullanıcı" ile kısmen çelişir). Dar MVP:
+  1. PİLOT sohbeti kullanıcının derdini yapılandırır (LLM).
+  2. Adaylar Fuji ERC-8004 Identity kaydından + `agent.json` kartlarından; demoda 3 ajan (PİLOT + 2 demo), **DEMO** etiketli. Gerçek OKX.AI listesi ancak dışarıdan okunabiliyorsa.
+  3. **Eşik kodda:** kimliksiz / puanı eşiğin altında / az geri bildirimli ajan elenir. Sybil önlemi: yalnız **FlightPlan'da o ajanla gerçekten `BuyExecuted` almış kullanıcıların** puanı sayılır (zincirden doğrulanır).
+  4. LLM kalanları uyuma göre sıralar, her birine Türkçe gerekçe.
+  5. Seçilen ajan için Uçuş Planı taslağı → onay penceresi → imza; `plan.agent` = seçilen ajan.
+  6. KULE (veya kontrat) `agentId`'nin ERC-8004 cüzdanı == `plan.agent` kontrolü; KULE ajan başına token (Bekir abi).
+  7. Sonrası aynı: izin → KULE → mutabakat.
+  Önce araştırma (OKX.AI gerçekte ne, ERC-8004 Reputation okuma ABI'si Fuji'de canlı) — `docs/claude/workflows/ajan-rehberi-arastirma.js`. Limit kısıtlı: hafif workflow (az inceleme turu).
+- **Hikâye/pivot geçmişi:** "Elif TL→dolar" hikâyesi zayıf bulundu. Masadaki fikir (yukarıdaki karar bunun MVP'si):
   *Kullanıcı sohbete derdini yazar → sistem OKX.AI/ERC-8004'teki ajanları toplar → **kod** ERC-8004 kimlik + itibar eşiğiyle eler (sybil önlemi: yalnız KULE üzerinden gerçekten işlem yapmış kullanıcıların puanı) → LLM uyuma göre sıralar → kullanıcı seçer → seçilen ajan için Uçuş Planı (onay penceresi + imza) → ajan yalnız KULE üzerinden çalışır → mutabakat.* KULE'yi kullanacak ajanların ERC-8004 kimliği zorunlu.
   Gerekenler: OKX.AI'ın gerçekte ne olduğu (liste dışarıdan okunabiliyor mu, hangi zincir), ERC-8004 Reputation okuma ABI'si (Fuji'de canlı kontrol), KULE'de ajan başına token. **Bu araştırma workflow'u başlatılıp durduruldu — yeniden çalıştır.** Ekip (Barış, Bekir) onayı gerekli; SPEC §22 "iki kullanıcı / pazaryeri" ile çelişebilir.
   Ayrıca konuşulan: TL/USDT/BTC konum alma + satış yönü (KULE'ye büyük iş), Uçuş Haritası (Koridor/Sis/Yasak hücreleri) — karar verilmedi.
@@ -66,5 +75,5 @@ cd contracts && forge build && forge test && cd ..
 
 1. (Kullanıcı) `.env`'leri doldur, Fuji AVAX al, `docs/DEPLOY.md`'ye göre deploy + Snowtrace doğrulama, `scripts/register-agent.ts` ile ERC-8004 kaydı.
 2. (Bekir abi, kritik yol) **B1 duman testleri + CAA testi hemen**, sonra KULE B2–B6 (`authz.ts` bağla), B7 VPS; UI.
-3. (Biz) `scripts/e2e.ts` (anvil uçtan uca) yaz; pivot araştırmasını yeniden çalıştır; karara göre SPEC v5 farkını yazdır.
+3. (Biz) Ajan seçme MVP araştırmasını yeniden çalıştır (§5 KARAR) → tasarım → uygulama; `scripts/e2e.ts` (anvil uçtan uca) yaz; SPEC v5 farkını yazdır. Taşıma paketi: `docs/claude/README.md`.
 4. Sunum: 7 slayt + soru-cevap kartı. Mentör soruları: "OKX bunu yaparsa?", "ürün olarak satılabilir mi?", "ajan kandırılabilir mi?", "diğer bekçi projelerinden farkınız?" — cevap taslakları: yetki katmanıyız (OKX'in rakibi değil ekosistemine altyapı), limit kullanıcının imzalı kuralı ve zincirde, kontrat gerçekten reddediyor, ajan anahtarı çalınsa bile sınır duruyor; satış: ajan geliştiricilerine/borsalara lisans-SaaS, Builder Code payı, Lira Hava Durumu verisi.

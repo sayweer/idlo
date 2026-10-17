@@ -1,0 +1,6 @@
+- [Orchestrator-only](orchestrator-only.md) — ana ajan yönetir, kodu alt ajanlar/workflow yazar
+- [Local commit policy](local-commit-policy.md) — her anlamlı değişiklikte yerel commit, Barış+Bekir co-author, Claude atıfı yok, push yok
+- [UI sahibi Bekir](ui-owner-bekir.md) — apps/web UI işini Bekir yapar; workflow’lara UI işi verme
+- [KULE yetki bağı açığı](kule-auth-binding.md) — doğrulandı; shared/authz.ts hazır, KULE’de bağlanması bekliyor (Bekir)
+- [Plan çevirisi: LLM + onay penceresi](no-llm-plan-translation.md) — LLM kalır; imzadan önce zincire yazılacak değerler pop-up’ta gösterilir/düzeltilir
+- [Pivot durumu](pivot-status.md) — Elif hikâyesi reddedildi, Kara Kutu askıda, ERC-8004 tescil fikri bekliyor
