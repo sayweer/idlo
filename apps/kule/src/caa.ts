@@ -129,11 +129,18 @@ export class CaaLoop implements CaaState {
     this.timer.unref?.();
   }
 
-  /** Kapanış: döngüyü durdurur ve {"timeOut":"0"} gönderir. */
-  async stop(): Promise<void> {
+  /**
+   * Kapanış: döngüyü durdurur ve (disarm) {"timeOut":"0"} gönderir.
+   * disarm=false: yenileme durur ama geri sayım KAPATILMAZ; açık emir kalmış olabilir, OKX ≤60 sn'de iptal eder.
+   */
+  async stop(opts: { disarm?: boolean } = {}): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.stopped = true;
+    if (opts.disarm === false) {
+      this.o.logger.log({ tool: "caa", event: "shutdown_left_armed" });
+      return;
+    }
     try {
       await this.o.client.set(0);
     } catch (e) {

@@ -142,6 +142,7 @@ export type PlaceBehavior =
   | "fill" // emir hemen dolar (ioc ve post_only)
   | "rest" // emir tahtada bekler (post_only); iptalde restFill kadar dolmuş sayılır
   | "reject" // OKX kesin ret
+  | "reject-duplicate" // OKX kopya clOrdId (51016) reddi; emir borsada get-order ile bulunamıyor
   | "timeout-landed" // yanıt kaybolur ama emir borsada
   | "timeout-lost"; // yanıt kaybolur ve emir yok
 
@@ -204,6 +205,9 @@ export class FakeExchange implements Exchange {
       case "reject":
         this.placed.pop();
         throw new ExchangeError("OKX ret", "rejected", { code: "51008" });
+      case "reject-duplicate":
+        this.placed.pop();
+        throw new ExchangeError("OKX kopya clOrdId", "rejected", { code: "51016" });
       case "timeout-lost":
         throw new ExchangeError("zaman aşımı", "uncertain");
       case "timeout-landed":

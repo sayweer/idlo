@@ -119,6 +119,32 @@ describe("AtkExchange (ATK araç adları okx list-tools --json'dan)", () => {
     expect(await kind(okRes([{ sCode: "0" }]))).toBe("uncertain"); // ordId yok
   });
 
+  it("U-11 ATK taşıma düzeyi hataları (HTTP 502/503/504, UNEXPECTED_CONTENT_TYPE, RESPONSE_TOO_LARGE, kodsuz OkxApiError) belirsizdir; kopya clOrdId (51016) kesin ret sayılmaz", async () => {
+    const args = { instId: "USDT-TRY", tdMode: "cash", side: "buy", ordType: "post_only", px: "49.4", sz: "10", clOrdId: "plt9" } as const;
+    const kind = async (r: Record<string, unknown> | Error): Promise<string | undefined> => {
+      try {
+        await new AtkExchange(fakeMcp(() => r).mcp).placeOrder(args);
+        return undefined;
+      } catch (e) {
+        return (e as ExchangeError).kind;
+      }
+    };
+    for (const code of ["502", "503", "504", "429", "UNEXPECTED_CONTENT_TYPE", "RESPONSE_TOO_LARGE", "50011", "50000", "5100", "511008", "51016"]) {
+      expect(await kind(errRes("OkxApiError", code, "gateway"))).toBe("uncertain");
+    }
+    expect(await kind(errRes("OkxApiError", undefined, "kodsuz"))).toBe("uncertain");
+    for (const type of ["RateLimitError", "AuthenticationError", "NetworkError"]) {
+      expect(await kind(errRes(type, "51008", "x"))).toBe("uncertain");
+    }
+    // kesin ret yalnız 51xxx–59xxx iş kodu
+    expect(await kind(errRes("OkxApiError", "51008", "yetersiz bakiye"))).toBe("rejected");
+    expect(await kind(errRes("OkxApiError", "58003", "x"))).toBe("rejected");
+    // sCode da aynı kuralla: sistem/HTTP benzeri ve kopya clOrdId belirsiz
+    expect(await kind(okRes([{ sCode: "51008", sMsg: "ret" }]))).toBe("rejected");
+    expect(await kind(okRes([{ sCode: "50011", sMsg: "rate" }]))).toBe("uncertain");
+    expect(await kind(okRes([{ sCode: "51016", sMsg: "duplicate clOrdId" }]))).toBe("uncertain");
+  });
+
   it("spot_get_order: clOrdId ile okur; 51603 (emir yok) → null; diğer hata fırlatır; bilinmeyen durum fırlatır", async () => {
     const row = { ordId: "5", clOrdId: "plt7", state: "partially_filled", sz: "202.2", px: "49.447", accFillSz: "10.5", avgPx: "49.447" };
     const { mcp, calls } = fakeMcp(() => okRes([row]));

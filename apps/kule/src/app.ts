@@ -37,7 +37,10 @@ export interface KuleApp {
   caa: CaaLoop | null;
   /** Dinlemeye başlar, CAA ve mutabakat döngülerini açar; gerçek portu döndürür. */
   start(): Promise<number>;
-  /** CAA {"timeOut":"0"} gönderir, sunucuyu ve ATK'yı kapatır. */
+  /**
+   * Yeni çağrıları keser, süren kule_execute'ları bekler, KULE'nin açık emirlerini iptal eder. Yalnız hiçbir emir
+   * canlı/belirsiz kalmadıysa CAA {"timeOut":"0"} gönderir; aksi halde 60 sn'lik geri sayım emri iptal etsin diye açık bırakılır.
+   */
   stop(): Promise<void>;
 }
 
@@ -104,11 +107,14 @@ export async function createApp(cfg: KuleConfig, o: AppOverrides = {}): Promise<
     },
     async stop() {
       executor.stopReconcileLoop();
-      await caa?.stop();
-      await new Promise<void>((r) => {
-        http.close(() => r());
-        http.closeAllConnections?.();
+      const closed = new Promise<void>((r) => http.close(() => r())); // yeni bağlantı alınmaz; süren istekler sürer
+      const sd = await executor.shutdown().catch((e: unknown) => {
+        logger.log({ tool: "kule", event: "shutdown_error", error: e instanceof Error ? e.message : String(e) });
+        return { safe: false, canceled: [] as string[], reasons: ["shutdown_error"] };
       });
+      await caa?.stop({ disarm: sd.safe });
+      http.closeAllConnections?.();
+      await closed;
       await exchange.close();
       logger.log({ tool: "kule", event: "stopped" });
     },

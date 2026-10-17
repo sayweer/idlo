@@ -374,6 +374,48 @@ describe("kule_execute: emir sonuçları, belirsizlik, rapor", () => {
     expect((await h.executor.execute(PILOT, "93")).reasons).toEqual(["ALREADY_EXECUTED"]);
   });
 
+  it("U-11 ret geldi ama borsada aynı clOrdId'li emir var (kayıp kayıt sonrası yeniden deneme) → serbest bırakılmaz, mevcut emir izlenir ve raporlanır", async () => {
+    const h = setup();
+    h.exchange.behavior = "reject";
+    h.chain.seed("981");
+    h.exchange.injectOrder({ ordId: "old-1", clOrdId: "plt981", state: "filled", sz: "202.2", px: "49.447", accFillSz: "202.2", avgPx: "49.447" });
+    const r = await h.executor.execute(PILOT, "981");
+    expect(r).toMatchObject({ verdict: "ONAY", status: "FILLED", ordId: "old-1" });
+    expect(h.chain.reports).toHaveLength(1);
+    expect(h.chain.reports[0]).toMatchObject({ actionId: "981", ordId: "old-1", status: "FILLED" });
+    expect(h.store.get("981")).toMatchObject({ state: "REPORTED" });
+    expect(h.store.get("981")!.released).toBeUndefined();
+  });
+
+  it("U-11 ret geldi ve borsada emir yok ama get-order okunamıyor → CANCELED rapor YOK; belirsiz (YENİ_EMİR_YOK)", async () => {
+    const h = setup();
+    h.exchange.behavior = "reject";
+    h.exchange.getOrderFails = true;
+    h.chain.seed("982");
+    const r = await h.executor.execute(PILOT, "982");
+    expect(r).toMatchObject({ verdict: "BEKLET", reasons: ["UNCERTAIN_RESULT"] });
+    expect(h.chain.reports).toHaveLength(0);
+    expect(h.store.get("982")).toMatchObject({ state: "PLACED", uncertain: true });
+  });
+
+  it("U-11 kopya clOrdId (51016) reddi asla serbest bırakmaz: get-order bulamasa da, mutabakat bekleme süresinden sonra da", async () => {
+    const h = setup({ tuning: { uncertainGraceMs: 90_000 } });
+    h.exchange.behavior = "reject-duplicate";
+    h.chain.seed("983");
+    const r = await h.executor.execute(PILOT, "983");
+    expect(r).toMatchObject({ verdict: "BEKLET", reasons: ["UNCERTAIN_RESULT"] });
+    expect(h.store.get("983")).toMatchObject({ state: "PLACED", uncertain: true, duplicateClOrdId: true });
+    h.clock.advance(300_000);
+    h.heartbeats.beat("pilot");
+    expect(await h.executor.reconcile()).toEqual({ resolved: 0, pending: 1 });
+    expect(h.chain.reports).toHaveLength(0);
+    expect(h.store.get("983")).toMatchObject({ state: "PLACED" });
+    // emir sonradan görünürse normal izlenir ve raporlanır
+    h.exchange.injectOrder({ ordId: "old-3", clOrdId: "plt983", state: "filled", sz: "1", px: "49.447", accFillSz: "1", avgPx: "49.447" });
+    expect(await h.executor.reconcile()).toEqual({ resolved: 1, pending: 0 });
+    expect(h.chain.reports[0]).toMatchObject({ actionId: "983" });
+  });
+
   it("zaman aşımı ama emir borsada → get-order ile netleşir, tek emir, raporlanır", async () => {
     const h = setup();
     h.exchange.behavior = "timeout-landed";

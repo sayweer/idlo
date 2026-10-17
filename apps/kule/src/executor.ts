@@ -53,14 +53,14 @@ import {
 } from "@pilot/shared";
 import { ChainDataError, type KuleChain } from "./chain.js";
 import type { TokenBinding } from "./config.js";
-import { ExchangeError, type Exchange, type OrderInfo } from "./exchange.js";
+import { DUPLICATE_CLORDID_CODES, ExchangeError, type Exchange, type OrderInfo } from "./exchange.js";
 import { MAX_DATA_AGE_SEC, type HealthMonitor } from "./health.js";
 import type { InstrumentCache } from "./instruments.js";
 import type { Logger } from "./logger.js";
 import { bestPrices, spreadTooWide } from "./market.js";
 import type { ActionRecord, ActionStore } from "./store.js";
 import type { KuleInput, KuleOutput } from "./types.js";
-import { errText, truncDecimal, type Clock, type Sleep } from "./util.js";
+import { errText, realSleep, truncDecimal, type Clock, type Sleep } from "./util.js";
 
 export interface Tuning {
   /** post_only en fazla bekleme (§9.2-13: 10 dk). */
@@ -139,6 +139,7 @@ export class Executor {
   private readonly inFlight = new Set<string>();
   private reconciling = false;
   private reconcileTimer: ReturnType<typeof setInterval> | null = null;
+  private shuttingDown = false;
 
   constructor(private readonly d: ExecutorDeps) {
     this.t = { ...DEFAULT_TUNING, ...d.tuning };
@@ -154,6 +155,8 @@ export class Executor {
     const clOrdId = clOrdIdFor(actionId); // geçersiz/çok uzun actionId → fırlatır (araç hatası)
     const ctx: Ctx = { actionId, clOrdId, caller: binding?.label ?? null, checks: [], detail: [] };
     try {
+      // Kapanış başladıysa yeni emir yok (CAA koruması kapanıyor).
+      if (this.shuttingDown) throw new Reject([healthReasonCode("CAA_INACTIVE")], { detail: "shutting_down" });
       return await this.run(binding, ctx);
     } catch (e) {
       if (e instanceof Reject) return this.reply(ctx, e.reasons, e.opts.detail ? { detail: e.opts.detail } : undefined);
@@ -347,16 +350,37 @@ export class Executor {
       });
       ordId = r.ordId;
     } catch (e) {
+      const dup = e instanceof ExchangeError && e.code !== undefined && DUPLICATE_CLORDID_CODES.includes(e.code);
+      if (dup) await this.d.store.update(actionId, { duplicateClOrdId: true }, this.nowMs());
       if (e instanceof ExchangeError && e.kind === "rejected") {
-        // Borsa kesin reddetti: emir yok → ayrılmış TL serbest.
         this.d.logger.log({ tool: "kule_execute", event: "order_rejected", actionId, error: errText(e), code: e.code ?? null });
-        const tx = await this.releaseUnplaced(actionId, "EXCHANGE_REJECTED");
-        return this.reply(ctx, ["EXCHANGE_REJECTED"], tx ? { reportTx: tx } : undefined);
+        // Ret "emir yok" demek değildir (kopya clOrdId, kayıp kayıt sonrası yeniden deneme): serbest bırakmadan önce borsaya sor.
+        let existing: OrderInfo | null = null;
+        let unknown = false;
+        try {
+          existing = await this.d.exchange.getOrder(ctx.clOrdId);
+        } catch {
+          unknown = true;
+        }
+        if (existing) {
+          this.d.logger.log({ tool: "kule_execute", event: "order_exists_after_reject", actionId, ordId: existing.ordId, code: e.code ?? null });
+          ordId = existing.ordId;
+        } else if (unknown || dup) {
+          // Emir var mı bilinmiyor (ya da kopya clOrdId: vardır): serbest bırakma yok, belirsiz yoluna git.
+          this.d.logger.log({ tool: "kule_execute", event: "order_uncertain", actionId, error: errText(e) });
+          uncertain = true;
+          ordId = "";
+        } else {
+          // Borsa kesin reddetti ve emir yok → ayrılmış TL serbest.
+          const tx = await this.releaseUnplaced(actionId, "EXCHANGE_REJECTED");
+          return this.reply(ctx, ["EXCHANGE_REJECTED"], tx ? { reportTx: tx } : undefined);
+        }
+      } else {
+        // Sonuç belirsiz: YENİ_EMİR_YOK; get-order ile netleşene kadar yeni emir yok (§9.2-12).
+        this.d.logger.log({ tool: "kule_execute", event: "order_uncertain", actionId, error: errText(e) });
+        uncertain = true;
+        ordId = "";
       }
-      // Sonuç belirsiz: YENİ_EMİR_YOK; get-order ile netleşene kadar yeni emir yok (§9.2-12).
-      this.d.logger.log({ tool: "kule_execute", event: "order_uncertain", actionId, error: errText(e) });
-      uncertain = true;
-      ordId = "";
     }
     if (uncertain) {
       await this.d.store.update(actionId, { uncertain: true }, this.nowMs());
@@ -678,6 +702,11 @@ export class Executor {
         return true;
       }
       const since = rec.placedAtMs ?? rec.reservedAtMs;
+      if (rec.duplicateClOrdId) {
+        // Borsa "clOrdId zaten var" dedi ama get-order bulamıyor: emir var sayılır, serbest bırakılmaz (elle bakılmalı).
+        this.d.logger.log({ tool: "kule_reconcile", event: "duplicate_clordid_unresolved", actionId });
+        return false;
+      }
       if (this.nowMs() - since >= this.t.uncertainGraceMs) {
         this.d.logger.log({ tool: "kule_reconcile", event: "no_order_found", actionId });
         await this.releaseUnplaced(actionId, "UNCERTAIN_RESULT");
@@ -706,6 +735,53 @@ export class Executor {
   stopReconcileLoop(): void {
     if (this.reconcileTimer) clearInterval(this.reconcileTimer);
     this.reconcileTimer = null;
+  }
+
+  // ─────────────────────────────── kapanış ───────────────────────────────
+
+  /**
+   * Kapanış: yeni kule_execute alınmaz, süren çağrılar drainMs boyunca beklenir, KULE'nin açık plt* emirleri iptal edilir.
+   * safe=true yalnız hiçbir emir canlı/belirsiz kalmadıysa (süren çağrı yok; RESERVED/PLACED her kayıt için borsada emir
+   * terminal ya da hiç yok). safe=false ise çağıran CAA geri sayımını KAPATMAMALIDIR (timeOut 0 göndermemeli): açık kalan
+   * emri OKX ≤60 sn'de iptal eder.
+   */
+  async shutdown(drainMs = 5_000): Promise<{ safe: boolean; canceled: string[]; reasons: string[] }> {
+    this.shuttingDown = true;
+    this.stopReconcileLoop();
+    const reasons: string[] = [];
+    const canceled: string[] = [];
+    const deadline = Date.now() + drainMs;
+    while (this.inFlight.size > 0 && Date.now() < deadline) await realSleep(50);
+    if (this.inFlight.size > 0) reasons.push("in_flight");
+
+    const targets = new Set<string>();
+    try {
+      for (const id of await this.d.exchange.listOpenClOrdIds()) if (/^plt[1-9]d*$/.test(id)) targets.add(id);
+    } catch (e) {
+      reasons.push("list_open_failed");
+      this.d.logger.log({ tool: "kule_shutdown", event: "list_open_failed", error: errText(e) });
+    }
+    const pendingRecs = this.d.store.all().filter((r) => !r.paper && (r.state === "RESERVED" || r.state === "PLACED"));
+    for (const r of pendingRecs) targets.add(r.clOrdId);
+    for (const clOrdId of targets) {
+      try {
+        await this.d.exchange.cancelOrder(clOrdId);
+        canceled.push(clOrdId);
+      } catch (e) {
+        this.d.logger.log({ tool: "kule_shutdown", event: "cancel_failed", clOrdId, error: errText(e) });
+      }
+    }
+    // Doğrula: kayıtlı hiçbir emir canlı ya da belirsiz kalmamalı.
+    for (const r of pendingRecs) {
+      try {
+        const o = await this.d.exchange.getOrder(r.clOrdId);
+        if (o ? !TERMINAL.has(o.state) : r.state === "PLACED" || r.uncertain === true) reasons.push(`unresolved:${r.actionId}`);
+      } catch {
+        reasons.push(`unverified:${r.actionId}`);
+      }
+    }
+    this.d.logger.log({ tool: "kule_shutdown", event: "shutdown", canceled, safe: reasons.length === 0, reasons });
+    return { safe: reasons.length === 0, canceled, reasons };
   }
 
   // ─────────────────────────────── kule_cancel ───────────────────────────────

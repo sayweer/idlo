@@ -33,6 +33,8 @@ export interface ActionRecord {
   reportTx?: Hex;
   /** Emir açılmadan reddedilen izin zincirde CANCELED ile serbest bırakıldı (TOO_LATE release). */
   released?: boolean;
+  /** Borsa kopya clOrdId (51016) bildirdi: bu clOrdId ile emir vardır; get-order bulamasa da asla serbest bırakılmaz. */
+  duplicateClOrdId?: boolean;
   /** reportExecution başarısız deneme sayısı (yeniden denemeyi sınırlar). */
   reportFailures?: number;
   updatedAtMs: number;

@@ -79,6 +79,12 @@ export class ExchangeError extends Error {
   readonly code: string | undefined;
 }
 
+/**
+ * OKX "Client order ID already exists" (51016). Aynı clOrdId ile emir zaten vardır (canlı ya da dolmuş); bu ret "emir yok"
+ * anlamına GELMEZ, asla serbest bırakmaya dayanak olmaz (SPEC: OKX'in kopya clOrdId'yi reddetmesine güvenilmez).
+ */
+export const DUPLICATE_CLORDID_CODES: readonly string[] = ["51016"];
+
 export interface Exchange {
   getTicker(instId: KuleInstrument): Promise<Ticker>;
   getBook(instId: KuleInstrument, depth?: number): Promise<Book>;

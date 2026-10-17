@@ -18,6 +18,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { KULE_INSTRUMENTS, TRADE_INST_ID, decimalToScaled, parseOkxTs, type KuleInstrument } from "@pilot/shared";
 import {
+  DUPLICATE_CLORDID_CODES,
   ExchangeError,
   type Balance,
   type Book,
@@ -45,6 +46,14 @@ export const ATK_WRITE_TIMEOUT_MS = 15_000;
 
 /** OKX kodları: sistem hatası/zaman aşımı → sonuç belirsiz (emir açılmış olabilir). */
 const UNCERTAIN_OKX_CODES = new Set(["50001", "50004", "50013", "50026"]);
+/**
+ * Emir reddinin KESİN olduğu kodlar: OKX iş hatası (51xxx–59xxx), sistem/zaman aşımı kodları hariç, kopya clOrdId hariç
+ * (o durumda emir zaten vardır). 3 haneli HTTP durumları, 50xxx genel/sistem kodları, kodsuz hatalar → belirsiz.
+ */
+function isDefinitiveOkxCode(code: string | undefined): boolean {
+  if (!code || !/^5[1-9]\d{3}$/.test(code)) return false;
+  return !UNCERTAIN_OKX_CODES.has(code) && !DUPLICATE_CLORDID_CODES.includes(code);
+}
 /** OKX: "Order does not exist". */
 const ORDER_NOT_FOUND = "51603";
 
@@ -231,14 +240,17 @@ export class AtkExchange implements Exchange {
     );
     if (!r.ok) {
       const f = r.failure;
-      const definitive = (f.type === "OkxApiError" && !(f.code && UNCERTAIN_OKX_CODES.has(f.code))) || f.type === "ValidationError";
+      // Ret opt-in: yalnız OKX iş kodu (5 haneli 51xxx–59xxx) kesin ret sayılır. ATK taşıma düzeyi HTTP hatalarını da
+      // OkxApiError olarak verir (code = "502"/"504", UNEXPECTED_CONTENT_TYPE, RESPONSE_TOO_LARGE); bunlarda emir
+      // borsada açılmış olabilir → belirsiz.
+      const definitive = f.type === "ValidationError" || (f.type === "OkxApiError" && isDefinitiveOkxCode(f.code));
       throw new ExchangeError(`spot_place_order: ${f.type} ${f.message}`, definitive ? "rejected" : "uncertain", f.code ? { code: f.code } : undefined);
     }
     const row = r.rows[0];
     if (isObj(row)) {
       const sCode = typeof row.sCode === "string" ? row.sCode : "0";
       if (sCode !== "0") {
-        throw new ExchangeError(`spot_place_order: sCode ${sCode}`, UNCERTAIN_OKX_CODES.has(sCode) ? "uncertain" : "rejected", { code: sCode });
+        throw new ExchangeError(`spot_place_order: sCode ${sCode}`, isDefinitiveOkxCode(sCode) ? "rejected" : "uncertain", { code: sCode });
       }
       if (typeof row.ordId === "string" && row.ordId !== "") return { ordId: row.ordId };
     }
