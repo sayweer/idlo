@@ -1,0 +1,14 @@
+{
+  "chainId": 43113,
+  "deployBlock": 59606509,
+  "deployer": "0x6478b070a6EeDfd13fdc19F0Dd815Dea9F57eBbD",
+  "erc8004": {
+    "identity": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    "reputation": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    "validation": "0x8004Cb1BF31DAf7788923b405b754f57acEB4272"
+  },
+  "flightPlan": "0xc5f2eA8aF9dE71f78E84F3D10B7c91928E684055",
+  "kuleReporter": "0x21b8f9eF40d4ec59504a7A4AD2Fd850409DC7D08",
+  "pilotAgent": "0x5cDb0668B377239756654CA4D1117975DC633E9C",
+  "agentId": "284"
+}

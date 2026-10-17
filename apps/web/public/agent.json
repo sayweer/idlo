@@ -1,0 +1,22 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "PİLOT",
+  "description": "PİLOT, Elif'in imzaladığı Uçuş Planı içinde TL'yi USDT'ye çeviren ajandır. Lira Hava Durumu'nu okur; her alım için Fuji'deki Uçuş Planı kontratından izin ister. Emri KULE verir; ajanın çekim yetkisi yoktur.",
+  "image": "https://idlo-wine.vercel.app/icon-512.png",
+  "services": [
+    {
+      "name": "MCP",
+      "endpoint": "https://idlo-wine.vercel.app/api/agents"
+    }
+  ],
+  "active": true,
+  "registrations": [
+    {
+      "agentId": 284,
+      "agentRegistry": "eip155:43113:0x8004A818BFB912233c491871b3d84c89A494BD9e"
+    }
+  ],
+  "supportedTrust": [
+    "reputation"
+  ]
+}

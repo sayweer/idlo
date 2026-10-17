@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "cd ../.. && npx -y pnpm@11.24.0 install --frozen-lockfile",
-  "buildCommand": "cd ../.. && npx -y pnpm@11.24.0 --filter @pilot/shared build && npx -y pnpm@11.24.0 --filter web exec vite build",
+  "buildCommand": "node scripts/sync-deployments.mjs && cd ../.. && npx -y pnpm@11.24.0 --filter @pilot/shared build && npx -y pnpm@11.24.0 --filter web exec vite build",
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/rpc", "destination": "/api/rpc" },
