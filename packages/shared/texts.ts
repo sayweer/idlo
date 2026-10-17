@@ -52,6 +52,7 @@ export const HEALTH_REASON_TEXTS: Record<HealthReasonName, string> = {
   CHAIN_UNREADABLE: "Zincir okunamıyor.",
   ORDER_UNCERTAIN: "Bir emrin sonucu belirsiz; netleşene kadar yeni emir yok.",
   PLAN_INACTIVE: "Kullanıcının planı iptal edilmiş ya da süresi bitmiş.",
+  CAA_INACTIVE: "Açık emirleri koruyan Cancel-All-After yenilenemiyor; yeni emir yok.",
 };
 
 export const KULE_REASON_TEXTS: Record<Exclude<KuleReasonName, "HEALTH">, string> = {
@@ -70,6 +71,7 @@ export const KULE_REASON_TEXTS: Record<Exclude<KuleReasonName, "HEALTH">, string
   UNCERTAIN_RESULT: "Emir sonucu belirsiz; netleşene kadar yeni emir yok.",
   SZ_LOOKS_LIKE_TL: "Miktar TL gibi görünüyor; limit alışta miktar USDT'dir.",
   NOTIONAL_MISMATCH: "Fiyat × miktar, tutardan %1'den fazla sapıyor.",
+  EXCHANGE_REJECTED: "Borsa emri reddetti; emir açılmadı.",
 };
 
 /** KULE gerekçe kodunun Türkçe mesajı (`HEALTH:<sebep>` dahil). */

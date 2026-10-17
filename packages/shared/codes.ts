@@ -93,6 +93,7 @@ export const HealthReason = {
   CHAIN_UNREADABLE: "YENİ_EMİR_YOK",
   ORDER_UNCERTAIN: "YENİ_EMİR_YOK",
   PLAN_INACTIVE: "YETKİ_YOK",
+  CAA_INACTIVE: "YENİ_EMİR_YOK", // TODO(spec): CAA yenilenemiyorsa açık emirler korumasız kalır (§9.3)
 } as const satisfies Record<string, Exclude<HealthState, "NORMAL">>;
 export type HealthReasonName = keyof typeof HealthReason;
 export const HEALTH_REASON_NAMES = Object.keys(HealthReason) as [HealthReasonName, ...HealthReasonName[]];
@@ -118,6 +119,7 @@ export const KuleReason = {
   UNCERTAIN_RESULT: "BEKLET", // §9.2-12 — TODO(spec): verdict belirtilmemiş; sağlık YENİ_EMİR_YOK olur
   SZ_LOOKS_LIKE_TL: "DÜZELT", // §9.1 kule_quote, U-2
   NOTIONAL_MISMATCH: "DÜZELT", // §9.1 kule_quote, U-3
+  EXCHANGE_REJECTED: "RET", // §9.2-11 — TODO(spec): borsa emri kesin reddetti (sonuç belirsiz değil)
 } as const satisfies Record<string, KuleVerdict>;
 export type KuleReasonName = keyof typeof KuleReason;
 export const KULE_REASON_NAMES = Object.keys(KuleReason) as [KuleReasonName, ...KuleReasonName[]];

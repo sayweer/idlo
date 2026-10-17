@@ -13,3 +13,4 @@ export * from "./deployments.js";
 export * from "./authz.js";
 export * from "./weather/index.js";
 export * from "./plan/index.js";
+export * from "./directory/index.js";
