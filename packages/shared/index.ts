@@ -10,3 +10,4 @@ export * from "./tools/types.js";
 export * from "./tools/kule.js";
 export * from "./tools/pilot.js";
 export * from "./deployments.js";
+export * from "./authz.js";

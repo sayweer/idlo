@@ -10,6 +10,10 @@ UI (apps/web) işi: önce docs/UI_HANDOFF.md'yi oku (ekranlar, veri kaynakları,
 1. Güvenlik kararını asla LLM'e bırakma. LLM çıktısı her zaman zod ile doğrulanır; LLM yalnız §10.2 araçlarını görür.
 2. Fail-closed: emin olmadığında emir verme, zincire yazma.
 3. KULE yalnız zincirde BuyAuthorized olan eylemi uygular; parametreleri çağırandan değil zincirden okur.
+   Ayrıca eylem Elif'e bağlı olmalı: actions(id).user == PLAN_USER_ADDRESS, plans(user).kule == KULE'nin kendi adresi,
+   plans(user).agent == token'ın ajanı. kule_execute bunu packages/shared/authz.ts ile yapar (kilitten önce
+   checkActionOwner, sağlıktan sonra checkActionLive). Kontrat herkesin kendi planını kurmasına izin verir; bu bağ olmadan
+   çalınan ajan anahtarı Elif'in imzalamadığı bir planla Elif'in hesabında emir açtırabilir.
 4. Çekim (withdrawal) kodu yazma. OKX anahtarı Read+Trade; withdraw yok.
 5. Anahtarlar: yalnız .env ve ~/.okx/config.toml. Koda, günlüğe, teste, commit'e yazma.
 6. apps/servis hiçbir anahtar tutmaz; yalnız herkese açık piyasa verisi.

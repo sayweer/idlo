@@ -100,8 +100,9 @@ interface IFlightPlan {
     ///      agentId'yi yazabilir. Olay yalnız msg.sender == plans(user).agent olduğunu kanıtlar; agentId ve user
     ///      zincir dışında doğrulanmalıdır.
     /// TODO(spec): §9.2 adım 4 kullanıcı bağı — KULE (kule_execute) ayrıca şunları istemeli, değilse RET NO_AUTHORIZATION:
-    ///   actions(id).user == yapılandırılmış Elif adresi, plans(user).kule == KULE'nin kendi KULE_REPORTER adresi,
-    ///   plans(user).agent == token'ın bağlı olduğu ajan adresi.
+    ///   actions(id).user == yapılandırılmış kullanıcı adresi (PLAN_USER_ADDRESS), plans(user).kule == KULE'nin kendi
+    ///   KULE_REPORTER adresi, plans(user).agent == token'ın bağlı olduğu ajan adresi. Zincir dışı uygulama:
+    ///   packages/shared/authz.ts checkActionOwner; belge testi: contracts/test/AuthBinding.t.sol.
     event BuyAuthorized(
         uint256 indexed actionId,
         address indexed user,
