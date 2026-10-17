@@ -32,3 +32,6 @@ config.toml
 *.log
 .vscode/
 .idea/
+
+# Yerel anvil/test deploy çıktıları (gerçek fuji.json dışında)
+deployments/.*.json

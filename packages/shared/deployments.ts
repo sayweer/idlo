@@ -16,22 +16,36 @@ const fixedAddress = (expected: string) =>
     message: `Ek B adresi olmalı: ${expected}`,
   });
 
+const nonZero = (role: string) =>
+  AddressSchema.refine((a) => BigInt(a) !== 0n, { message: `${role} sıfır adres olamaz` });
+
 /**
- * deployments/fuji.json (A2 Deploy.s.sol yazar, A3 agentId ekler).
- * TODO(spec): SPEC dosyanın alan adlarını vermiyor; en dar seçim: {chainId, flightPlan, erc8004{identity,
- * reputation, validation}, agentId?}. A2/A3 dosyayı yazınca alan adları buna göre kesinleştirilmeli.
- * ERC-8004 adresleri Ek B'dekinden farklıysa dosya reddedilir (fail-closed).
+ * deployments/fuji.json: contracts/script/Deploy.s.sol (A2) yazar, scripts/register-agent.ts (A3) agentId ekler.
+ * Alanlar Deploy.s.sol _json() ile birebir; örnek: deployments/fuji.example.json.
+ * - deployBlock: betiğin çalıştığı blok, işlemin girdiği bloktan küçük ya da eşit; olay taraması buradan başlar.
+ * - pilotAgent / kuleReporter: Plan.agent / Plan.kule için PİLOT_AGENT ve KULE_REPORTER EOA adresleri (§6.1 #6).
+ * TODO(spec): SPEC dosyanın alan adlarını vermiyor; adlar UI_HANDOFF §3.3 önerisiyle seçildi.
+ * Fail-closed: yanlış zincir, sıfır adres, aynı cüzdana düşen roller ya da Ek B dışı ERC-8004 adresi reddedilir.
  */
-export const DeploymentsSchema = z.object({
-  chainId: z.literal(FUJI_CHAIN_ID),
-  flightPlan: AddressSchema,
-  erc8004: z.strictObject({
-    identity: fixedAddress(ERC8004_FUJI.identity),
-    reputation: fixedAddress(ERC8004_FUJI.reputation),
-    validation: fixedAddress(ERC8004_FUJI.validation),
-  }),
-  agentId: Uint256StringSchema.optional(), // A3 register-agent.ts yazana kadar yok
-});
+export const DeploymentsSchema = z
+  .object({
+    chainId: z.literal(FUJI_CHAIN_ID),
+    flightPlan: nonZero("flightPlan"),
+    deployBlock: z.int().nonnegative(),
+    deployer: nonZero("deployer"),
+    pilotAgent: nonZero("pilotAgent"),
+    kuleReporter: nonZero("kuleReporter"),
+    erc8004: z.strictObject({
+      identity: fixedAddress(ERC8004_FUJI.identity),
+      reputation: fixedAddress(ERC8004_FUJI.reputation),
+      validation: fixedAddress(ERC8004_FUJI.validation),
+    }),
+    agentId: Uint256StringSchema.optional(), // A3 register-agent.ts yazana kadar yok
+  })
+  .refine(
+    (d) => new Set([d.deployer, d.pilotAgent, d.kuleReporter].map((a) => a.toLowerCase())).size === 3,
+    { message: "deployer, pilotAgent ve kuleReporter ayrı cüzdanlar olmalı", path: ["pilotAgent"] },
+  );
 export type Deployments = z.infer<typeof DeploymentsSchema>;
 
 /**
