@@ -54,7 +54,7 @@ export function ruleRationale(c: Candidate): string {
   const facts =
     c.score === null
       ? `${c.feedbackCount} doğrulanmış geri bildirim.`
-      : `${c.feedbackCount} doğrulanmış geri bildirimle ${fmt(c.score)} puan.`;
+      : `${c.feedbackClients} farklı doğrulanmış müşteriden ${c.feedbackCount} geri bildirimle ${fmt(c.score)} puan.`;
   return c.demo ? `DEMO ajan. ${facts}` : facts;
 }
 
@@ -74,6 +74,7 @@ export function agentsBlock(kept: readonly Candidate[]): { text: string; factNum
     aciklama: sanitizeUntrusted(c.card?.description ?? "", DESCRIPTION_MAX),
     puan: c.score === null ? null : Math.round(c.score * 100) / 100,
     dogrulanmisGeriBildirim: c.feedbackCount,
+    farkliMusteri: c.feedbackClients,
     demo: c.demo,
   }));
   const factNumbers = new Set<number>();
@@ -83,6 +84,7 @@ export function agentsBlock(kept: readonly Candidate[]): { text: string; factNum
       factNumbers.add(Math.round(c.score));
     }
     factNumbers.add(c.feedbackCount);
+    factNumbers.add(c.feedbackClients);
   }
   return { text: JSON.stringify(rows, null, 1), factNumbers };
 }

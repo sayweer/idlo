@@ -1,7 +1,8 @@
 /**
  * Giriş noktası: `selectAgents(sohbetMetni, config)` → düz JSON (bigint yok, SelectionResultSchema ile doğrulanmış).
  * Akış: ihtiyaç yapılandır (LLM) ‖ adayları zincirden oku → eşik (kod) → kalanları sırala (LLM, kural yedeği).
- * Web bunu bir route'tan çağırır; seçilen ajan için `planForAgent` (selection.ts) sonraki adımdır.
+ * Web bunu bir route'tan çağırır. İmza yolu (`planForAgent`, selection.ts) bu çıktıyı GİRDİ olarak almaz: seçilen
+ * agentId için adayı zincirden taze okur (tarayıcıdan dönen JSON'a güvenilmez).
  */
 import Anthropic from "@anthropic-ai/sdk";
 import {

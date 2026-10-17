@@ -277,7 +277,7 @@ describe("R-4 itibar", () => {
   it("R-4a doğrulanmış kullanıcı yoksa getSummary ÇAĞRILMAZ ve sayı 0", async () => {
     const c = new FakeDirectoryChain();
     const r = await readReputation(c, 1n, []);
-    expect(r).toEqual({ feedbackCount: 0, score: null });
+    expect(r).toEqual({ feedbackCount: 0, feedbackClients: 0, score: null });
     expect(c.summaryCalls).toHaveLength(0);
   });
 
@@ -288,13 +288,13 @@ describe("R-4 itibar", () => {
     c.addFeedback(1, U, 95);
     c.addFeedback(1, fakeAddr(0xee), 1); // verilmeyen istemci
     const r = await readReputation(c, 1n, [U]);
-    expect(r).toEqual({ feedbackCount: 2, score: 95 });
+    expect(r).toEqual({ feedbackCount: 2, feedbackClients: 1, score: 95 });
     expect(c.summaryCalls[0]!.clients).toEqual([U]);
   });
 
   it("R-4c geri bildirim yoksa score null; decimals > 18 ya da çok büyük sayı fırlatır", async () => {
     const c = new FakeDirectoryChain();
-    expect(await readReputation(c, 1n, [fakeAddr(1)])).toEqual({ feedbackCount: 0, score: null });
+    expect(await readReputation(c, 1n, [fakeAddr(1)])).toEqual({ feedbackCount: 0, feedbackClients: 0, score: null });
     const bad = { ...c, reputationSummary: async () => ({ count: 1n, value: 5n, decimals: 40 }) } as unknown as FakeDirectoryChain;
     await expect(readReputation(bad, 1n, [fakeAddr(1)])).rejects.toThrow(/ondalığı/);
     const huge = { ...c, reputationSummary: async () => ({ count: 2n ** 70n, value: 5n, decimals: 2 }) } as unknown as FakeDirectoryChain;
@@ -316,6 +316,7 @@ describe("R-5 eşik (screen)", () => {
     cardIssueTr: null,
     verifiedClients: [fakeAddr(1), fakeAddr(2), fakeAddr(3)],
     feedbackCount: 3,
+    feedbackClients: 3,
     score: 90,
     issuesTr: [],
   });
@@ -332,7 +333,7 @@ describe("R-5 eşik (screen)", () => {
     expect(codeOf({ ...base(), agentWallet: null })).toBe("NO_AGENT_WALLET");
     expect(codeOf({ ...base(), card: null, cardIssueTr: "Ajan kartı alınamadı." })).toBe("INVALID_CARD");
     expect(codeOf({ ...base(), feedbackCount: MIN_FEEDBACK - 1 })).toBe("TOO_FEW_FEEDBACK");
-    expect(codeOf({ ...base(), verifiedClients: [], feedbackCount: 0, score: null })).toBe("TOO_FEW_FEEDBACK");
+    expect(codeOf({ ...base(), verifiedClients: [], feedbackCount: 0, feedbackClients: 0, score: null })).toBe("TOO_FEW_FEEDBACK");
     expect(codeOf({ ...base(), score: MIN_SCORE - 0.01 })).toBe("LOW_SCORE");
     expect(codeOf({ ...base(), score: null })).toBe("LOW_SCORE");
     expect(codeOf({ ...base(), readFailed: true })).toBe("CHAIN_UNREADABLE");
@@ -429,7 +430,7 @@ describe("R-7 sıralama", () => {
     expect(ruleOrder(k).map((c) => c.agentId)).toEqual(["1", "2"]);
     const r = ruleRanking(k);
     expect(r.source).toBe("rule");
-    expect(r.items[0]!.rationaleTr).toBe("3 doğrulanmış geri bildirimle 92,33 puan.");
+    expect(r.items[0]!.rationaleTr).toBe("3 farklı doğrulanmış müşteriden 3 geri bildirimle 92,33 puan.");
     expect(r.items[1]!.rationaleTr).toMatch(/^DEMO ajan\./);
   });
 
@@ -506,14 +507,14 @@ const draft15 = (): PlanDraft => ({
 describe("R-8 seçim → plan taslağı", () => {
   const NOW = 1_800_000_000;
   const ctx = { nowSec: NOW, current: null, currentActive: false };
-  async function screened() {
+  function directory() {
     const w = buildDemoWorld();
-    return { w, s: screen(await loadCandidates(REFS, regCfg(w.chain, w.fetch))) };
+    return { w, dir: { chain: w.chain, deployments: FAKE_DEPLOYMENTS, candidates: REFS, fetch: w.fetch } };
   }
 
   it("R-8a plan.agent = seçilen ajanın agentWallet'ı, plan.agentId = agentId, plan.kule = kuleReporter; imzaya açılır", async () => {
-    const { w, s } = await screened();
-    const c = confirmationForAgent(draft15(), s, "2", FAKE_DEPLOYMENTS, ctx);
+    const { w, dir } = directory();
+    const c = await confirmationForAgent(draft15(), "2", dir, ctx);
     expect(c.signable).toBe(true);
     const plan = c.setPlanArgs![0];
     expect(plan.agent).toBe(w.agents[1]!.wallet);
@@ -523,46 +524,56 @@ describe("R-8 seçim → plan taslağı", () => {
   });
 
   it("R-8b elenen ajan seçilemez (agent_not_eligible), listede olmayan unknown_agent", async () => {
-    const { s } = await screened();
+    const { w, dir } = directory();
+    const s = screen(await loadCandidates(REFS, regCfg(w.chain, w.fetch)));
     expect(() => pickCandidate(s, "3")).toThrowError(expect.objectContaining({ kind: "agent_not_eligible" }));
     expect(() => pickCandidate(s, "77")).toThrowError(expect.objectContaining({ kind: "unknown_agent" }));
-    expect(() => confirmationForAgent(draft15(), s, "3", FAKE_DEPLOYMENTS, ctx)).toThrow(DirectoryError);
+    await expect(confirmationForAgent(draft15(), "3", dir, ctx)).rejects.toMatchObject({ kind: "agent_not_eligible" });
+    await expect(confirmationForAgent(draft15(), "77", dir, ctx)).rejects.toMatchObject({ kind: "unknown_agent" });
   });
 
   it("R-8c mevcut plan başka ajanla ise pencere 24 saat bekletir uyarısı verir (agent/agentId her zaman bekletir)", async () => {
-    const { w, s } = await screened();
-    const first = confirmationForAgent(draft15(), s, "1", FAKE_DEPLOYMENTS, ctx).setPlanArgs![0];
+    const { w, dir } = directory();
+    const first = (await confirmationForAgent(draft15(), "1", dir, ctx)).setPlanArgs![0];
     const current = {
       cycleTL: 20000, maxOrderTL: 10000, startDay: 1, deadlineDay: 5, maxWaitH: 72, bandBps: 0, closedBandBps: 500, askMode: 1 as const,
       expiresAt: NOW + 90 * 86400, agent: first.agent, kule: first.kule, agentId: first.agentId.toString(),
     };
-    const c = confirmationForAgent(draft15(), s, "2", FAKE_DEPLOYMENTS, { nowSec: NOW, current, currentActive: true });
+    const c = await confirmationForAgent(draft15(), "2", dir, { nowSec: NOW, current, currentActive: true });
     expect(c.activation!.immediate).toBe(false);
     expect(c.activation!.loosened).toEqual(expect.arrayContaining(["agent", "agentId"]));
     expect(c.setPlanArgs![0].agent).toBe(w.agents[1]!.wallet);
   });
 
   it("R-8d planForAgent: hazır taslakla LLM çağrılmaz; cümleyle planFromSentence çalışır", async () => {
-    const { s } = await screened();
+    const { dir } = directory();
     const llm = fakeLlm([draft15()]);
-    const viaDraft = await planForAgent({ draft: draft15(), agentId: "1", screen: s, deployments: FAKE_DEPLOYMENTS, ctx, llm: { client: llm, model: MODEL } });
+    const viaDraft = await planForAgent({ draft: draft15(), agentId: "1", directory: dir, ctx, llm: { client: llm, model: MODEL } });
     expect(viaDraft.signable).toBe(true);
     expect(llm.calls).toHaveLength(0);
     const viaSentence = await planForAgent({
       sentence: "Maaşım ayın 1'inde yatıyor. 20 bininin en geç 5'ine kadar dolara çevrilmesini istiyorum. Tek seferde 10 binden fazla harcama. Emin olmadığın bir şey olursa bana sor.",
-      agentId: "1", screen: s, deployments: FAKE_DEPLOYMENTS, ctx, llm: { client: llm, model: MODEL },
+      agentId: "1", directory: dir, ctx, llm: { client: llm, model: MODEL },
     });
     expect(viaSentence.signable).toBe(true);
     expect(llm.calls).toHaveLength(1);
   });
 
   it("R-8e eşiği geçmeyen ajan için LLM harcanmaz; LLM yoksa ve taslak da yoksa plan_not_buildable", async () => {
-    const { s } = await screened();
+    const { dir } = directory();
     const llm = fakeLlm([]);
-    await expect(planForAgent({ sentence: "x", agentId: "3", screen: s, deployments: FAKE_DEPLOYMENTS, ctx, llm: { client: llm, model: MODEL } })).rejects.toMatchObject({ kind: "agent_not_eligible" });
+    await expect(planForAgent({ sentence: "x", agentId: "3", directory: dir, ctx, llm: { client: llm, model: MODEL } })).rejects.toMatchObject({ kind: "agent_not_eligible" });
     expect(llm.calls).toHaveLength(0);
-    await expect(planForAgent({ sentence: "x", agentId: "1", screen: s, deployments: FAKE_DEPLOYMENTS, ctx, llm: null })).rejects.toMatchObject({ kind: "plan_not_buildable" });
-    await expect(planForAgent({ agentId: "1", screen: s, deployments: FAKE_DEPLOYMENTS, ctx, llm: null })).rejects.toMatchObject({ kind: "plan_not_buildable" });
+    await expect(planForAgent({ sentence: "x", agentId: "1", directory: dir, ctx, llm: null })).rejects.toMatchObject({ kind: "plan_not_buildable" });
+    await expect(planForAgent({ agentId: "1", directory: dir, ctx, llm: null })).rejects.toMatchObject({ kind: "plan_not_buildable" });
+  });
+
+  it("R-8f imza yolu zinciri TAZE okur: seçimden sonra cüzdanı kaldırılan ajan imzaya açılmaz", async () => {
+    const { w, dir } = directory();
+    expect((await confirmationForAgent(draft15(), "1", dir, ctx)).signable).toBe(true);
+    // seçimden sonra zincirde ajan 1'in cüzdanı kaldırıldı: eski anlık görüntü değil, güncel durum kazanır
+    w.chain.addAgent(1, { owner: w.agents[0]!.owner, uri: w.agents[0]!.uri, wallet: null });
+    await expect(confirmationForAgent(draft15(), "1", dir, ctx)).rejects.toMatchObject({ kind: "agent_not_eligible" });
   });
 });
 

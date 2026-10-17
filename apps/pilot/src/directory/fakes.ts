@@ -47,6 +47,9 @@ export class FakeDirectoryChain implements DirectoryChain {
   readonly summaryCalls: { agentId: bigint; clients: Address[] }[] = [];
   /** Okuma hatası enjekte et: yöntem adı → hata. */
   readonly failing = new Map<string, Error>();
+  /** txSender çağrı sayacı ve belirli işlem karmaları için hata enjeksiyonu (spam/bütçe testleri). */
+  readonly senderCalls: Hex[] = [];
+  readonly failingTx = new Set<Hex>();
   private nextTx = 1;
 
   private maybeFail(name: string): void {
@@ -123,6 +126,8 @@ export class FakeDirectoryChain implements DirectoryChain {
   }
   async txSender(hash: Hex): Promise<Address> {
     this.maybeFail("txSender");
+    this.senderCalls.push(hash);
+    if (this.failingTx.has(hash)) throw new Error("rpc zaman aşımı (işlem)");
     const l = [...this.authorizedLogs, ...this.executedLogs].find((x) => x.txHash === hash);
     if (l === undefined) throw new Error("işlem bulunamadı");
     return l.sender;

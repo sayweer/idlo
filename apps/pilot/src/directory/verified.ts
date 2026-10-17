@@ -11,12 +11,29 @@
  *       emrini "gerçekleşti" diye raporlayamaz).
  * Ek olarak ajanın kendisi, sahibi ve KULE raporlayıcısı müşteri sayılmaz (kendi kendine itibar üretme).
  *
+ * Maliyet (spam dayanımı): BuyAuthorized'ı herkes yayabilir (agentId serbest alan), bu yüzden işlem göndereni
+ * sorgusu (`txSender`, RPC) YALNIZ olay çiftleri birleştirildikten sonra yapılır: önce ucuz kodla eleme (kendi
+ * kendine itibar), sonra BuyExecuted ile birleştirme (filledTL > 0, aynı kullanıcı), en son kalan çiftler için
+ * sınırlı eşzamanlılıkla gönderen sorgusu. Spam BuyAuthorized'ın RPC maliyeti sıfırdır. Bütçe aşımı ve gönderen
+ * sorgusu hatası YALNIZ o ajanı okunamaz yapar (`failed`); diğer ajanlar etkilenmez. Olay taramasının kendisi
+ * (getLogs) başarısızsa tüm ajanlar için fırlatır (RPC tümden kapalı).
+ *
  * TODO(spec): bu kural KULE raporlayıcısının dürüst olduğuna dayanır (güven noktası; KULE zaten emri veren taraftır).
  * Aynı kişinin birden çok cüzdanı hâlâ ayrı müşteri sayılır; MIN_VERIFIED_CLIENTS yalnız tek cüzdanı eler.
+ * TODO(spec): sonuç bloğa göre önbelleğe alınmıyor; her seçimde deployBlock'tan taranır (indeksleyici gerekir).
+ * TODO(spec): bütçe aşımı ajanı eler (fail-closed); bütçeyi aşacak kadar spam, tek bir ajanı dizinden düşürebilir.
  */
 import { getAddress, isAddress, isAddressEqual, zeroAddress, type Address, type Hex } from "viem";
 import { MAX_VERIFIED_CLIENTS } from "@pilot/shared";
 import type { DirectoryChain } from "./chain.js";
+import { mapLimit } from "./reputation.js";
+
+/** Bir ajan için uzaktan bakılacak BuyAuthorized sayısı üst sınırı (ucuz elemeden sonra). TODO(spec): SPEC vermiyor. */
+export const MAX_AUTHORIZED_LOGS_PER_AGENT = 1_000;
+/** Bir ajan için en çok kaç (izin, rapor) çiftinin işlem göndereni (RPC) sorgulanır. TODO(spec): SPEC vermiyor. */
+export const MAX_SENDER_LOOKUPS_PER_AGENT = 200;
+/** txSender sorgularının eşzamanlılığı. */
+export const SENDER_CONCURRENCY = 8;
 
 export interface AgentIdentityFacts {
   agentId: bigint;
@@ -32,33 +49,36 @@ export interface VerifyParams {
   deployBlock: bigint;
 }
 
-/** agentId (ondalık string) → doğrulanmış kullanıcılar (checksum'lı, sıralı, tekrarsız, en çok MAX_VERIFIED_CLIENTS). */
-export async function findVerifiedClients(
+export interface VerifyOutcome {
+  /** agentId (ondalık string) → doğrulanmış kullanıcılar (checksum'lı, sıralı, tekrarsız, en çok MAX_VERIFIED_CLIENTS). */
+  clients: Map<string, Address[]>;
+  /** agentId → okunamama nedeni (yalnız o ajan; fail-closed). */
+  failed: Map<string, string>;
+}
+
+const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e)).slice(0, 160);
+
+/** Ajan başına izolasyonlu doğrulama: bir ajanın hatası ya da bütçe aşımı diğerlerini düşürmez. */
+export async function verifyClients(
   chain: DirectoryChain,
   agents: readonly AgentIdentityFacts[],
   params: VerifyParams,
-): Promise<Map<string, Address[]>> {
+): Promise<VerifyOutcome> {
   if (!isAddress(params.kuleReporter) || isAddressEqual(params.kuleReporter, zeroAddress)) {
     throw new Error("kuleReporter geçerli ve sıfırdan farklı olmalı");
   }
-  const result = new Map<string, Address[]>();
+  const clients = new Map<string, Address[]>();
+  const failed = new Map<string, string>();
   const facts = new Map<bigint, AgentIdentityFacts & { wallet: Address }>();
   for (const a of agents) {
-    result.set(a.agentId.toString(), []);
+    clients.set(a.agentId.toString(), []);
     if (a.wallet !== null) facts.set(a.agentId, { ...a, wallet: a.wallet });
   }
-  if (facts.size === 0) return result;
+  if (facts.size === 0) return { clients, failed };
 
-  const senders = new Map<Hex, Promise<Address>>();
-  const senderOf = (h: Hex) => {
-    let p = senders.get(h);
-    if (p === undefined) senders.set(h, (p = chain.txSender(h)));
-    return p;
-  };
-
-  // (1) BuyAuthorized: işlemi ajanın agentWallet'ı göndermiş olmalı.
+  // (1) BuyAuthorized taraması + ucuz eleme (RPC yok): kendi kendine itibar, sıfır adres.
   const authorized = await chain.buyAuthorized([...facts.keys()], params.deployBlock);
-  const byAction = new Map<bigint, { user: Address; agentId: bigint }>();
+  const perAgent = new Map<bigint, Map<bigint, { user: Address; txHash: Hex }>>();
   for (const log of authorized) {
     const f = facts.get(log.agentId);
     if (f === undefined) continue; // sorgulanmayan agentId
@@ -70,30 +90,96 @@ export async function findVerifiedClients(
     ) {
       continue; // kendi kendine itibar
     }
-    if (!isAddressEqual(await senderOf(log.txHash), f.wallet)) continue; // agentId'yi başkası yazmış
-    byAction.set(log.actionId, { user: log.user, agentId: log.agentId });
+    const m = perAgent.get(log.agentId) ?? new Map<bigint, { user: Address; txHash: Hex }>();
+    m.set(log.actionId, { user: log.user, txHash: log.txHash });
+    perAgent.set(log.agentId, m);
   }
-  if (byAction.size === 0) return result;
+  for (const [agentId, m] of [...perAgent]) {
+    if (m.size > MAX_AUTHORIZED_LOGS_PER_AGENT) {
+      failed.set(agentId.toString(), `çok fazla BuyAuthorized olayı (${m.size} > ${MAX_AUTHORIZED_LOGS_PER_AGENT})`);
+      perAgent.delete(agentId);
+    }
+  }
+  if (perAgent.size === 0) return { clients, failed };
 
-  // (2) BuyExecuted: filledTL > 0 ve işlemi güvenilen KULE raporlayıcısı göndermiş olmalı.
-  const executed = await chain.buyExecuted([...byAction.keys()], params.deployBlock);
-  const sets = new Map<string, Map<string, Address>>();
+  // (2) BuyExecuted taraması (yalnız elemeden geçen actionId'ler) ve birleştirme: filledTL > 0, aynı kullanıcı.
+  const actionToAgent = new Map<bigint, bigint>();
+  for (const [agentId, m] of perAgent) for (const actionId of m.keys()) actionToAgent.set(actionId, agentId);
+  const executed = await chain.buyExecuted([...actionToAgent.keys()], params.deployBlock);
+  // agentId → actionId → BuyExecuted işlemleri (aynı actionId için birden çok rapor olabilir)
+  const joined = new Map<bigint, Map<bigint, Hex[]>>();
   for (const log of executed) {
-    const auth = byAction.get(log.actionId);
+    const agentId = actionToAgent.get(log.actionId);
+    if (agentId === undefined) continue;
+    const auth = perAgent.get(agentId)?.get(log.actionId);
     if (auth === undefined) continue;
     if (!isAddressEqual(log.user, auth.user)) continue; // başka kullanıcı için raporlanmış
     if (log.filledTL <= 0n) continue; // hiçbir şey dolmadı
-    if (!isAddressEqual(await senderOf(log.txHash), params.kuleReporter)) continue; // sahte KULE
-    const key = auth.agentId.toString();
-    const m = sets.get(key) ?? new Map<string, Address>();
-    m.set(auth.user.toLowerCase(), getAddress(auth.user));
-    sets.set(key, m);
+    const byAction = joined.get(agentId) ?? new Map<bigint, Hex[]>();
+    byAction.set(log.actionId, [...(byAction.get(log.actionId) ?? []), log.txHash]);
+    joined.set(agentId, byAction);
   }
-  for (const [key, m] of sets) {
-    result.set(
-      key,
-      [...m.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())).slice(0, MAX_VERIFIED_CLIENTS),
-    );
-  }
-  return result;
+
+  // (3) Yalnız birleşen çiftler için işlem göndereni: önce KULE raporu (spam burada elenir), sonra ajan izni.
+  const senders = new Map<Hex, Promise<Address>>();
+  const senderOf = (h: Hex): Promise<Address> => {
+    let p = senders.get(h);
+    if (p === undefined) senders.set(h, (p = chain.txSender(h)));
+    return p;
+  };
+  await Promise.all(
+    [...joined].map(async ([agentId, byAction]) => {
+      const key = agentId.toString();
+      const f = facts.get(agentId)!;
+      try {
+        const pairs = [...byAction].map(([actionId, reportTxs]) => ({ actionId, reportTxs, auth: perAgent.get(agentId)!.get(actionId)! }));
+        const verified = new Map<string, Address>();
+        let lookups = 0;
+        const pending = [...pairs];
+        while (pending.length > 0) {
+          // Aynı kullanıcı doğrulandıktan sonra onun diğer çiftleri atlanır (gereksiz RPC yok).
+          const wave: typeof pairs = [];
+          while (wave.length < SENDER_CONCURRENCY && pending.length > 0) {
+            const p = pending.shift()!;
+            if (!verified.has(p.auth.user.toLowerCase())) wave.push(p);
+          }
+          if (wave.length === 0) break;
+          lookups += wave.length;
+          if (lookups > MAX_SENDER_LOOKUPS_PER_AGENT) throw new RangeError(`çok fazla işlem göndereni sorgusu (> ${MAX_SENDER_LOOKUPS_PER_AGENT} çift)`);
+          const oks = await mapLimit(wave, SENDER_CONCURRENCY, async (p) => {
+            let reportedByKule = false;
+            for (const tx of p.reportTxs) {
+              if (isAddressEqual(await senderOf(tx), params.kuleReporter)) {
+                reportedByKule = true;
+                break;
+              }
+            }
+            if (!reportedByKule) return false; // sahte KULE
+            return isAddressEqual(await senderOf(p.auth.txHash), f.wallet); // agentId'yi başkası yazmış → false
+          });
+          wave.forEach((p, k) => {
+            if (oks[k]) verified.set(p.auth.user.toLowerCase(), getAddress(p.auth.user));
+          });
+        }
+        clients.set(
+          key,
+          [...verified.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())).slice(0, MAX_VERIFIED_CLIENTS),
+        );
+      } catch (e) {
+        failed.set(key, errText(e));
+      }
+    }),
+  );
+  return { clients, failed };
+}
+
+/** Eski sözleşme: ajan başına hata yok sayılmaz, herhangi bir ajan okunamazsa fırlatır (fail-closed). */
+export async function findVerifiedClients(
+  chain: DirectoryChain,
+  agents: readonly AgentIdentityFacts[],
+  params: VerifyParams,
+): Promise<Map<string, Address[]>> {
+  const { clients, failed } = await verifyClients(chain, agents, params);
+  if (failed.size > 0) throw new Error(`doğrulanmış kullanıcılar okunamadı: ${[...failed].map(([k, v]) => `${k}: ${v}`).join("; ")}`);
+  return clients;
 }

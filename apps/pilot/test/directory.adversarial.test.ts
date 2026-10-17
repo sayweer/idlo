@@ -5,8 +5,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { type Address } from "viem";
-import { type Candidate, type ScreenResult } from "@pilot/shared";
+import { CandidateSchema, DEFAULT_THRESHOLDS, RationaleSchema, type Candidate, type ScreenResult } from "@pilot/shared";
 import {
+  MAX_AUTHORIZED_LOGS_PER_AGENT,
   FAKE_DEPLOYMENTS,
   FAKE_KULE_REPORTER,
   FakeDirectoryChain,
@@ -18,14 +19,20 @@ import {
   fakeFetch,
   fakeLlm,
   fetchAgentCard,
+  guardedLookup,
+  isPublicIp,
+  publicHttpsFetch,
+  readReputation,
   findVerifiedClients,
   loadCandidates,
   rankSurvivors,
   sanitizeUntrusted,
   screen,
+  planForAgent,
   selectAgents,
   structureNeed,
   type DirectoryConfig,
+  type SigningDirectory,
 } from "../src/directory/index.js";
 
 const MODEL = "test-model";
@@ -337,37 +344,69 @@ describe("R-A5 seçim sahteciliği", () => {
     expiresInDays: { value: 90, source: "default" as const },
     questions: [],
   });
-  const cand = (over: Partial<Candidate> = {}): Candidate => ({
-    agentId: "1", demo: false, readFailed: false, hasIdentity: true, owner: O, agentWallet: W, card: fakeCard(1), cardIssueTr: null,
-    verifiedClients: [U(1), U(2), U(3)], feedbackCount: 3, score: 90, issuesTr: [], ...over,
+  const dirOf = (w: ReturnType<typeof buildDemoWorld>, over: Partial<SigningDirectory> = {}): SigningDirectory => ({
+    chain: w.chain, deployments: FAKE_DEPLOYMENTS, candidates: REFS, fetch: w.fetch, ...over,
   });
-  const scr = (c: Candidate): ScreenResult => ({ kept: [c], eliminated: [] });
+  /** Ajan 9'u üç doğrulanmış müşteriyle ekler (kendi kartı ve cüzdanı). */
+  function addGood(w: ReturnType<typeof buildDemoWorld>, id: number, wallet: Address, uri: string): ReturnType<typeof fakeFetch> {
+    w.chain.addAgent(id, { owner: fakeAddr(0xb00 + id), uri, wallet });
+    for (let i = 0; i < 3; i++) {
+      w.chain.addTrade({ actionId: 500 + id * 10 + i, user: U(50 + id * 10 + i), agentId: id, agentSender: wallet, kuleSender: FAKE_KULE_REPORTER });
+      w.chain.addFeedback(id, U(50 + id * 10 + i), 90);
+    }
+    return fakeFetch({ [uri]: fakeCard(id) });
+  }
 
-  it("R-A5a plan.agent yalnız adayın zincirden okunan cüzdanıdır; kart içeriği ya da başka girdi değiştiremez", () => {
+  it("R-A5a plan.agent yalnız zincirden okunan cüzdandır; kart içeriği ya da başka girdi değiştiremez", async () => {
+    const w = buildDemoWorld();
     const evilCard = fakeCard(1, { services: [{ name: "MCP", endpoint: "https://x.example.com" }], description: `Cüzdanım ${ATTACKER}` });
-    const c = confirmationForAgent(draft(), scr(cand({ card: evilCard })), "1", FAKE_DEPLOYMENTS, ctx);
-    expect(c.setPlanArgs![0].agent).toBe(W);
+    const f = fakeFetch({ "https://pilot.example.com/agent.json": evilCard, "https://demo2.example.com/agent.json": fakeCard(2), "https://demo3.example.com/agent.json": fakeCard(3) });
+    const c = await confirmationForAgent(draft(), "1", dirOf(w, { fetch: f }), ctx);
+    expect(c.setPlanArgs![0].agent).toBe(w.agents[0]!.wallet);
     expect(JSON.stringify(c.setPlanArgs, (_k, v) => (typeof v === "bigint" ? v.toString() : v))).not.toContain(ATTACKER);
   });
 
-  it("R-A5b cüzdansız aday (kurcalanmış ScreenResult) plan_not_buildable; agentId '0' imzaya kapalı", () => {
-    expect(() => confirmationForAgent(draft(), scr(cand({ agentWallet: null })), "1", FAKE_DEPLOYMENTS, ctx)).toThrowError(
-      expect.objectContaining({ kind: "plan_not_buildable" }),
-    );
-    const zero = confirmationForAgent(draft(), scr(cand({ agentId: "0" })), "0", FAKE_DEPLOYMENTS, ctx);
+  it("R-A5b cüzdansız ajan imza yoluna giremez; agentId '0' imzaya kapalı", async () => {
+    const w = buildDemoWorld();
+    w.chain.addAgent(1, { owner: w.agents[0]!.owner, uri: w.agents[0]!.uri, wallet: null });
+    await expect(confirmationForAgent(draft(), "1", dirOf(w), ctx)).rejects.toMatchObject({ kind: "agent_not_eligible" });
+    const w0 = buildDemoWorld();
+    const f0 = addGood(w0, 0, fakeAddr(0xa0), "https://zero.example.com/agent.json");
+    const zero = await confirmationForAgent(draft(), "0", dirOf(w0, { candidates: [{ agentId: "0" }], fetch: f0 }), ctx);
     expect(zero.signable).toBe(false);
     expect(zero.setPlanArgs).toBeNull();
   });
 
-  it("R-A5c sıfır adresli kuleReporter ile pencere imzaya kapalı (fail-closed)", () => {
-    const c = confirmationForAgent(draft(), scr(cand()), "1", { kuleReporter: "0x0000000000000000000000000000000000000000" }, ctx);
-    expect(c.signable).toBe(false);
+  it("R-A5c sıfır adresli kuleReporter ile doğrulama fırlatır: kimse imzaya açılmaz (fail-closed)", async () => {
+    const w = buildDemoWorld();
+    const zeroKule = { ...FAKE_DEPLOYMENTS, kuleReporter: "0x0000000000000000000000000000000000000000" as Address };
+    await expect(confirmationForAgent(draft(), "1", dirOf(w, { deployments: zeroKule }), ctx)).rejects.toMatchObject({ kind: "agent_not_eligible" });
   });
 
-  it("R-A5d eleneni 'kept' diye sunan sahte ScreenResult yine de geçer ama gerçek screen elenenleri asla kept'e koymaz", async () => {
+  it("R-A5d eleneni 'kept' diye sunan sahte ScreenResult imza yoluna giremez; gerçek screen elenenleri asla kept'e koymaz", async () => {
     const w = buildDemoWorld();
     const s = screen(await loadCandidates(REFS, regCfg(w.chain, w.fetch)));
     expect(s.kept.some((c) => c.agentId === "3")).toBe(false);
+    // Ajan 3 elenmiştir; istemci "kept" içinde göstermiş olsa bile imza yolu taze okur ve reddeder.
+    await expect(confirmationForAgent(draft(), "3", dirOf(w), ctx)).rejects.toMatchObject({ kind: "agent_not_eligible" });
+  });
+
+  it("R-A5e sahte ScreenResult (kept[i].agentWallet = saldırgan) verilse de plan.agent zincirdeki cüzdandır", async () => {
+    const w = buildDemoWorld();
+    const real = screen(await loadCandidates(REFS, regCfg(w.chain, w.fetch))).kept.find((c) => c.agentId === "1")!;
+    const forged: ScreenResult = { kept: [{ ...real, agentWallet: ATTACKER }], eliminated: [] };
+    const input = { draft: draft(), agentId: "1", directory: dirOf(w), ctx, llm: null, screen: forged } as unknown as Parameters<typeof planForAgent>[0];
+    const c = await planForAgent(input);
+    expect(c.setPlanArgs![0].agent).toBe(w.agents[0]!.wallet);
+    expect(c.setPlanArgs![0].agent).not.toBe(ATTACKER);
+    expect(JSON.stringify(c.setPlanArgs, (_k, v) => (typeof v === "bigint" ? v.toString() : v))).not.toContain(ATTACKER);
+  });
+
+  it("R-A5f zincirde uygun olsa bile yapılandırılmış aday listesinde olmayan agentId seçilemez (unknown_agent)", async () => {
+    const w = buildDemoWorld();
+    const f = addGood(w, 9, fakeAddr(0xa9), "https://nine.example.com/agent.json");
+    await expect(confirmationForAgent(draft(), "9", dirOf(w, { fetch: f }), ctx)).rejects.toMatchObject({ kind: "unknown_agent" });
+    await expect(confirmationForAgent(draft(), "not-a-number", dirOf(w), ctx)).rejects.toMatchObject({ kind: "unknown_agent" });
   });
 });
 
@@ -405,5 +444,207 @@ describe("R-A6 zincir okuma hataları fail-closed", () => {
     const r = await selectAgents("Dolar", { chain: w.chain, deployments: FAKE_DEPLOYMENTS, candidates: [...REFS, { agentId: "404" }], fetch: w.fetch, llm: null, model: MODEL });
     expect(r.screen.eliminated.find((e) => e.agentId === "404")!.code).toBe("NO_IDENTITY");
     expect(r.screen.kept).toHaveLength(2);
+  });
+});
+
+// ───────────────────────────── R-A7 inceleme düzeltmeleri ─────────────────────────────
+
+describe("R-A7 SSRF: ad normalleştirme, IP aralıkları, bağlantı denetimi", () => {
+  it("R-A7a sondaki nokta, joker DNS ve ek özel IPv4 aralıkları reddedilir", () => {
+    const bad = [
+      "https://localhost./a",
+      "https://LOCALHOST./a",
+      "https://metadata.google.internal./a",
+      "https://x.internal./a",
+      "https://127.0.0.1.nip.io/a",
+      "https://10-0-0-1.sslip.io/a",
+      "https://127.0.0.1./a",
+      "https://192.0.0.192/",
+      "https://192.0.2.1/",
+      "https://198.18.0.1/",
+      "https://198.19.255.255/",
+      "https://198.51.100.7/",
+      "https://203.0.113.9/",
+      "https://svc.intranet/a",
+    ];
+    for (const u of bad) expect(typeof checkCardUri(u, false), u).toBe("string");
+    expect(checkCardUri("https://agent.example.com./card.json", false)).toBeInstanceOf(URL);
+  });
+
+  it("R-A7b isPublicIp: özel, loopback, link-local, ULA, eşlenmiş ve geçiş adresleri herkese açık değil", () => {
+    const priv = [
+      "127.0.0.1", "0.0.0.0", "10.1.2.3", "169.254.169.254", "192.0.0.192", "198.18.0.1", "100.64.0.1", "255.255.255.255",
+      "::", "::1", "fe80::1", "fc00::1", "fd12:3456::1", "ff02::1", "::ffff:127.0.0.1", "::ffff:7f00:1", "::ffff:10.0.0.1",
+      "64:ff9b::7f00:1", "2002:7f00:1::", "2001:db8::1", "2001::1", "not-an-ip",
+    ];
+    for (const ip of priv) expect(isPublicIp(ip), ip).toBe(false);
+    for (const ip of ["93.184.216.34", "8.8.8.8", "2606:4700:4700::1111", "::ffff:8.8.8.8"]) expect(isPublicIp(ip), ip).toBe(true);
+  });
+
+  it("R-A7c guardedLookup ve publicHttpsFetch: özel adrese çözülen ad (localhost) bağlantı kurulmadan reddedilir", async () => {
+    const err = await new Promise<NodeJS.ErrnoException | null>((resolve) =>
+      guardedLookup("localhost", {}, (e) => resolve(e)),
+    );
+    expect(err).not.toBeNull();
+    expect(err!.code).toBe("EBLOCKEDADDR");
+    // all:true çağrısı (autoSelectFamily) da reddedilir
+    const errAll = await new Promise<NodeJS.ErrnoException | null>((resolve) => guardedLookup("localhost", { all: true }, (e) => resolve(e)));
+    expect(errAll?.code).toBe("EBLOCKEDADDR");
+    // checkCardUri'nin geçirdiği ama özel IP'ye çözülen ad: https isteği ağa çıkmadan reddedilir
+    await expect(publicHttpsFetch("https://localhost/agent.json", { signal: AbortSignal.timeout(3000) })).rejects.toThrow();
+  });
+});
+
+describe("R-A7 verified: spam dayanımı ve ajan başına izolasyon", () => {
+  const spamTrade = (w: ReturnType<typeof buildDemoWorld>, i: number, agentId: number, over: { executed?: boolean } = {}) =>
+    w.chain.addTrade({
+      actionId: 10_000 + i, user: fakeAddr(0x10000 + i), agentId, agentSender: ATTACKER, kuleSender: ATTACKER, skipExecuted: over.executed !== true,
+    });
+
+  it("R-A7d sahte BuyAuthorized yağmuru işlem göndereni (RPC) sorgusu üretmez; dürüst ajan doğrulanır", async () => {
+    const w = buildDemoWorld();
+    for (let i = 0; i < 60; i++) spamTrade(w, i, 1);
+    const spamHashes = new Set(w.chain.authorizedLogs.filter((l) => l.sender === ATTACKER).map((l) => l.txHash));
+    const list = await loadCandidates(REFS, regCfg(w.chain, w.fetch));
+    expect(list.every((c) => !c.readFailed)).toBe(true);
+    expect(list.find((c) => c.agentId === "1")!.verifiedClients).toHaveLength(3);
+    expect(w.chain.senderCalls.some((h) => spamHashes.has(h))).toBe(false);
+    expect(w.chain.senderCalls.length).toBeLessThanOrEqual(9 * 2); // yalnız 9 gerçek alım, her biri en çok 2 sorgu
+  });
+
+  it("R-A7e sahte KULE raporlu spam yalnız rapor işlemi için sorgu yapar (izin işlemi sorgulanmaz) ve sayılmaz", async () => {
+    const w = buildDemoWorld();
+    for (let i = 0; i < 20; i++) spamTrade(w, i, 1, { executed: true });
+    const authSpam = new Set(w.chain.authorizedLogs.filter((l) => l.sender === ATTACKER).map((l) => l.txHash));
+    const list = await loadCandidates(REFS, regCfg(w.chain, w.fetch));
+    expect(list.find((c) => c.agentId === "1")!.verifiedClients).toHaveLength(3);
+    expect(w.chain.senderCalls.some((h) => authSpam.has(h))).toBe(false);
+  });
+
+  it("R-A7f bir ajanın işlem göndereni hatası yalnız o ajanı okunamaz yapar; diğerleri kalır", async () => {
+    const w = buildDemoWorld();
+    w.chain.failingTx.add(w.chain.executedLogs[0]!.txHash); // ajan 1'in ilk alımının KULE raporu
+    const list = await loadCandidates(REFS, regCfg(w.chain, w.fetch));
+    expect(list.find((c) => c.agentId === "1")!.readFailed).toBe(true);
+    expect(list.find((c) => c.agentId === "2")!.readFailed).toBe(false);
+    expect(list.find((c) => c.agentId === "3")!.readFailed).toBe(false);
+    const s = screen(list);
+    expect(s.kept.map((c) => c.agentId)).toEqual(["2"]);
+    expect(s.eliminated.find((e) => e.agentId === "1")!.code).toBe("CHAIN_UNREADABLE");
+  });
+
+  it("R-A7g bütçeyi aşan BuyAuthorized yağmuru yalnız hedef ajanı eler (ajan başına bütçe); eski findVerifiedClients fırlatır", async () => {
+    const w = buildDemoWorld();
+    for (let i = 0; i <= MAX_AUTHORIZED_LOGS_PER_AGENT; i++) spamTrade(w, i, 2);
+    const list = await loadCandidates(REFS, regCfg(w.chain, w.fetch));
+    expect(list.find((c) => c.agentId === "2")!.readFailed).toBe(true);
+    expect(list.find((c) => c.agentId === "1")!.readFailed).toBe(false);
+    expect(w.chain.senderCalls).toHaveLength(12); // ajan 1 ve 3'ün 6 gerçek alımı x 2 sorgu; ajan 2 için hiç sorgu yok
+    await expect(findVerifiedClients(w.chain, [{ agentId: 2n, wallet: w.agents[1]!.wallet, owner: w.agents[1]!.owner }], params)).rejects.toThrow(/okunamadı/);
+  });
+});
+
+describe("R-A7 itibar: puan aralığı ve farklı müşteri", () => {
+  it("R-A7h 0–100 dışı puan (1e20, negatif, 101) okunamaz sayılır; sınırlar (0 ve 100) kabul", async () => {
+    const mk = (value: bigint, decimals: number) =>
+      ({ reputationSummary: async () => ({ count: 3n, value, decimals }) }) as unknown as FakeDirectoryChain;
+    await expect(readReputation(mk(10n ** 20n, 0), 1n, [fakeAddr(1)])).rejects.toThrow(/aralığı/);
+    await expect(readReputation(mk(-1n, 0), 1n, [fakeAddr(1)])).rejects.toThrow(/aralığı/);
+    await expect(readReputation(mk(10_100n, 2), 1n, [fakeAddr(1)])).rejects.toThrow(/aralığı/);
+    expect((await readReputation(mk(10_000n, 2), 1n, [fakeAddr(1)])).score).toBe(100);
+    expect((await readReputation(mk(0n, 2), 1n, [fakeAddr(1)])).score).toBe(0);
+    expect(CandidateSchema.shape.score.safeParse(1e20).success).toBe(false);
+    expect(CandidateSchema.shape.score.safeParse(-1).success).toBe(false);
+  });
+
+  it("R-A7i zincirde aşırı puan veren doğrulanmış müşteri adayı CHAIN_UNREADABLE yapar, listenin başına çıkaramaz", async () => {
+    const w = buildDemoWorld();
+    w.chain.addFeedback(1, fakeAddr(0xc00), 1e20); // ajan 1'in ilk doğrulanmış müşterisi
+    const s = screen(await loadCandidates(REFS, regCfg(w.chain, w.fetch)));
+    expect(s.kept.map((c) => c.agentId)).toEqual(["2"]);
+    expect(s.eliminated.find((e) => e.agentId === "1")).toMatchObject({ code: "CHAIN_UNREADABLE" });
+  });
+
+  const oneClientWorld = (feedbacks: number[], extraSilentClients = 0) => {
+    const w = buildDemoWorld();
+    const wallet = fakeAddr(0xa9);
+    w.chain.addAgent(9, { owner: fakeAddr(0xb9), uri: "https://nine.example.com/agent.json", wallet });
+    const clients = [U(1), ...Array.from({ length: extraSilentClients }, (_, i) => U(2 + i))];
+    clients.forEach((u, i) => w.chain.addTrade({ actionId: 700 + i, user: u, agentId: 9, agentSender: wallet, kuleSender: FAKE_KULE_REPORTER }));
+    for (const f of feedbacks) w.chain.addFeedback(9, U(1), f);
+    return { w, f: fakeFetch({ "https://nine.example.com/agent.json": fakeCard(9) }) };
+  };
+
+  it("R-A7j tek müşterinin 3 geri bildirimi eşiği geçemez: feedbackCount=3 ama feedbackClients=1 → TOO_FEW_FEEDBACK", async () => {
+    const { w, f } = oneClientWorld([95, 95, 95]);
+    const c = (await loadCandidates([{ agentId: "9" }], regCfg(w.chain, f)))[0]!;
+    expect(c.feedbackCount).toBe(3);
+    expect(c.feedbackClients).toBe(1);
+    const e = screen([c]).eliminated[0]!;
+    expect(e.code).toBe("TOO_FEW_FEEDBACK");
+    expect(e.reasonTr).toMatch(/3 geri bildirim, 1 farklı müşteri/);
+  });
+
+  it("R-A7k geri bildirim vermeyen sessiz doğrulanmış müşteriler farklı müşteri sayılmaz", async () => {
+    const { w, f } = oneClientWorld([95, 95, 95], 4); // 5 doğrulanmış müşteri, yalnız biri yazmış
+    const c = (await loadCandidates([{ agentId: "9" }], regCfg(w.chain, f)))[0]!;
+    expect(c.verifiedClients).toHaveLength(5);
+    expect(c.feedbackClients).toBe(1);
+    expect(screen([c]).eliminated[0]!.code).toBe("TOO_FEW_FEEDBACK");
+  });
+
+  it("R-A7l farklı müşteri sayısı eşiği: 3 müşteri geçer; tek müşterili demo yalnız AÇIK eşik geçersiziyle geçer", async () => {
+    const w = buildDemoWorld();
+    expect((await loadCandidates(REFS, regCfg(w.chain, w.fetch))).find((c) => c.agentId === "1")!.feedbackClients).toBe(3);
+    expect(DEFAULT_THRESHOLDS.minVerifiedClients).toBeGreaterThanOrEqual(2);
+    const { w: w1, f } = oneClientWorld([95, 95, 95]);
+    const c = (await loadCandidates([{ agentId: "9" }], regCfg(w1.chain, f)))[0]!;
+    expect(screen([c]).kept).toHaveLength(0);
+    expect(screen([c], { minVerifiedClients: 1 }).kept).toHaveLength(1);
+  });
+});
+
+describe("R-A8 gerekçe düz metin olmalı", () => {
+  const need = { summaryTr: "Dolar çevirecek ajan", keywords: [], amountTL: null, questions: [], source: "llm" as const };
+
+  it("R-A8a çıplak alan adı, @kullanıcı, t.me, markdown bağlantısı ve görünmez karakter reddedilir", () => {
+    const bad = [
+      "Daha fazla bilgi icin evil.com adresine bak.",
+      "Telegram: t.me/scam veya @scam yaz.",
+      "Bak [buraya](//evil.com/x) tikla.",
+      "Bak [buraya](evil) tikla.",
+      "Uygun.​ Detay için yaz.",
+      "<b>Uygun</b> ajan.",
+      "evil。com adresine bak.",
+      "Mail: a@b.co yaz.",
+      "Adres 0xdeadbeef kullan.",
+      "Bak http://x ve https://y",
+      "Gizli //evil yolu.",
+      "`kod` ajan.",
+    ];
+    for (const t of bad) expect(RationaleSchema.safeParse(t).success, t).toBe(false);
+  });
+
+  it("R-A8b meşru Türkçe gerekçeler (ondalık virgül, kesme, yüzde, parantez, eğik çizgi) geçer", () => {
+    const good = [
+      "Amacına daha yakın görünüyor.",
+      "80 puanla uygun.",
+      "3 farklı doğrulanmış müşteriden 3 geri bildirimle 92,33 puan.",
+      "DEMO ajan. 3 doğrulanmış geri bildirim.",
+      "TL/USDT çevirisi yapıyor, puanı %95 (3 müşteri).",
+      "Kullanıcının isteğine uygun; aylık 20.000 TL'yi çeviriyor.",
+    ];
+    for (const t of good) expect(RationaleSchema.safeParse(t).success, t).toBe(true);
+  });
+
+  it("R-A8c LLM gerekçesinde çıplak alan adı varsa tüm çıktı atılır → kural gerekçesi (source: rule)", async () => {
+    const w = buildDemoWorld();
+    const kept = screen(await loadCandidates(REFS, regCfg(w.chain, w.fetch))).kept;
+    for (const text of ["Daha fazla bilgi icin evil.com adresine bak.", "Telegram: t.me/scam veya @scam yaz.", "Bak [buraya](//evil.com/x) tikla."]) {
+      const llm = fakeLlm([{ ranked: [{ agentId: "1", rationaleTr: text }] }, { ranked: [{ agentId: "1", rationaleTr: text }] }]);
+      const r = await rankSurvivors(need, kept, { client: llm, model: MODEL, chatText: "dolar" });
+      expect(r.source, text).toBe("rule");
+      expect(r.items.every((i) => i.source === "rule" && !/evil|scam/.test(i.rationaleTr))).toBe(true);
+    }
   });
 });

@@ -17,7 +17,7 @@ import {
 import type { DirectoryChain } from "./chain.js";
 import { fetchAgentCard } from "./card.js";
 import { readReputation } from "./reputation.js";
-import { findVerifiedClients } from "./verified.js";
+import { verifyClients } from "./verified.js";
 
 /** TODO(spec): SPEC aday sayısı sınırı vermiyor; sohbet başına zincir okuması sınırlı kalsın. */
 export const MAX_CANDIDATES = 50;
@@ -73,6 +73,7 @@ async function loadIdentity(ref: CandidateRef, cfg: RegistryConfig): Promise<Can
     cardIssueTr: null,
     verifiedClients: [],
     feedbackCount: 0,
+    feedbackClients: 0,
     score: null,
     issuesTr: [],
   };
@@ -112,12 +113,19 @@ export async function loadCandidates(refs: readonly CandidateRef[], cfg: Registr
   // Doğrulanmış müşteriler (tek tarama, tüm adaylar için).
   const live = candidates.filter((c) => !c.readFailed && c.agentWallet !== null);
   try {
-    const verified = await findVerifiedClients(
+    const { clients, failed } = await verifyClients(
       cfg.chain,
       live.map((c) => ({ agentId: BigInt(c.agentId), wallet: c.agentWallet, owner: c.owner })),
       { kuleReporter: cfg.deployments.kuleReporter as Address, deployBlock: BigInt(cfg.deployments.deployBlock) },
     );
-    for (const c of live) c.verifiedClients = (verified.get(c.agentId) ?? []).slice(0, MAX_VERIFIED_CLIENTS);
+    for (const c of live) {
+      const why = failed.get(c.agentId);
+      if (why !== undefined) {
+        // Ajan başına hata: yalnız bu aday okunamaz sayılır (diğerleri etkilenmez).
+        c.readFailed = true;
+        c.issuesTr.push(`Doğrulanmış kullanıcılar okunamadı: ${why}`);
+      } else c.verifiedClients = (clients.get(c.agentId) ?? []).slice(0, MAX_VERIFIED_CLIENTS);
+    }
   } catch (e) {
     for (const c of live) {
       c.readFailed = true;
@@ -133,6 +141,7 @@ export async function loadCandidates(refs: readonly CandidateRef[], cfg: Registr
         try {
           const r = await readReputation(cfg.chain, BigInt(c.agentId), c.verifiedClients);
           c.feedbackCount = r.feedbackCount;
+          c.feedbackClients = r.feedbackClients;
           c.score = r.score;
         } catch (e) {
           c.readFailed = true;

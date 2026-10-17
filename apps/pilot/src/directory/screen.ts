@@ -34,11 +34,11 @@ export function eliminationOf(c: Candidate, t: Thresholds): Eliminated | null {
   if (!c.hasIdentity) return eliminate(c, "NO_IDENTITY", "ERC-8004 kimliği yok.");
   if (c.agentWallet === null) return eliminate(c, "NO_AGENT_WALLET", "Kimlikte ajan cüzdanı (agentWallet) tanımlı değil.");
   if (c.card === null) return eliminate(c, "INVALID_CARD", c.cardIssueTr ?? "Ajan kartı geçersiz.");
-  if (c.verifiedClients.length < t.minVerifiedClients || c.feedbackCount < t.minFeedback) {
+  if (c.feedbackClients < t.minVerifiedClients || c.feedbackCount < t.minFeedback) {
     return eliminate(
       c,
       "TOO_FEW_FEEDBACK",
-      `Doğrulanmış geri bildirim yetersiz: ${c.feedbackCount} (en az ${t.minFeedback} gerekli; yalnız bu ajanla gerçekten işlem yapmış kullanıcılar sayılır).`,
+      `Doğrulanmış geri bildirim yetersiz: ${c.feedbackCount} geri bildirim, ${c.feedbackClients} farklı müşteri (en az ${t.minFeedback} geri bildirim ve ${t.minVerifiedClients} farklı müşteri gerekli; yalnız bu ajanla gerçekten işlem yapmış kullanıcılar sayılır).`,
     );
   }
   if (c.score === null || c.score < t.minScore) {
