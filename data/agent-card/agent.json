@@ -1,0 +1,17 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "PİLOT",
+  "description": "PİLOT, Elif'in imzaladığı Uçuş Planı içinde TL'yi USDT'ye çeviren ajandır. Lira Hava Durumu'nu okur; her alım için Fuji'deki Uçuş Planı kontratından izin ister. Emri KULE verir; ajanın çekim yetkisi yoktur.",
+  "image": "https://web.ALANADI.com/pilot.png",
+  "services": [
+    {
+      "name": "MCP",
+      "endpoint": "https://servis.ALANADI.com/mcp"
+    }
+  ],
+  "active": true,
+  "registrations": [],
+  "supportedTrust": [
+    "reputation"
+  ]
+}

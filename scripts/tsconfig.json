@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["stolen-key.ts", "mutabakat.ts", "register-agent.ts", "lib/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules"]
+}

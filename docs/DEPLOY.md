@@ -93,3 +93,61 @@ cd contracts && DEPLOY_LOCAL=1 DEPLOYMENTS_OUT=../deployments/.anvil.json \
 - Yerel bayrak gerçek `fuji.json`'u yazamaz: `DEPLOYMENTS_OUT` zorunludur ve dosya adı nokta ile başlamalıdır (ör. `.anvil.json`); aksi hâlde `LocalOutRequired`.
 - Düz Anvil (31337) dosyasını `parseDeployments` reddeder. Web için `--chain-id 43113` kullan.
 - Denemeden sonra `contracts/broadcast/Deploy.s.sol/43113` ve `contracts/cache/Deploy.s.sol/43113` klasörlerini sil, yoksa gerçek Fuji kayıtlarına karışır.
+
+---
+
+# ERC-8004 kaydı (A3)
+
+Kaynak: SPEC §8.5, §17.2 A3, Ek B; UI_HANDOFF §2.6. Betik: `scripts/register-agent.ts` (çekirdek `scripts/lib/registerAgent.ts`). Kayıt dosyası üreticisi: `scripts/lib/agentCard.ts` (`buildAgentCard`), şablon: `data/agent-card/agent.json`.
+
+## 1. Önce
+
+- A2 bitmiş olmalı: `deployments/fuji.json` var ve `parseDeployments` ile geçerli (§4).
+- Web'in `/agent.json` adresi **sabit ve yayında** olmalı (UI_HANDOFF §2.6). Betik kayıttan önce bu adresi indirir. Şu durumlarda kayıt yapmaz: dosya şemaya uymuyorsa, `name` "PİLOT" değilse, kayıt adresi `eip155:43113:0x8004A818…` değilse ya da içinde `ALANADI` yer tutucusu kalmışsa.
+- Kaydı **DEPLOYER** cüzdanı yapar. İmzalayan adres `fuji.json.deployer` değilse betik durur. TODO(spec): SPEC kimin kaydedeceğini söylemiyor; en dar seçim bu, sıcak PİLOT anahtarı kullanılmaz.
+
+## 2. Kayıt
+
+```bash
+set -a; source contracts/.env; set +a      # FUJI_RPC ve DEPLOYER_PRIVATE_KEY yalnız ortamda kalır
+pnpm install && pnpm --filter @pilot/shared build
+curl -fsS https://<web>/agent.json | jq .  # yayında mı?
+pnpm exec tsx scripts/register-agent.ts --agent-uri https://<web>/agent.json             # kuru çalıştırma: göndermez, yazmaz
+pnpm exec tsx scripts/register-agent.ts --agent-uri https://<web>/agent.json --broadcast # gerçek kayıt + fuji.json.agentId
+```
+
+Bayraklar: `--rpc URL` (`FUJI_RPC` yerine), `--deployments yol` (varsayılan `deployments/fuji.json`), `--force`, `--local --registry 0x…`.
+
+Betik şu durumlarda işlem göndermeden durur (fail-closed):
+- `fuji.json` yok, bozuk ya da şemaya uymuyor;
+- `fuji.json` içinde zaten `agentId` var (`--force` ile yeniden kayıt yapılır, eski `agentId`'nin üzerine yazılır; F-4 nedeniyle planı olan kullanıcılar için yeni `agentId` 24 saat bekler);
+- `agentURI` https değil, yolu `/agent.json` değil, sorgu/parça/yer tutucu içeriyor ya da kanonik değil (`new URL(uri).href` girdiden farklı: boşluk, büyük harfli alan adı, `:443`, `..`, sonda `?`/`#`). Zincire yazılan metin, denetlenen ve indirilen metnin aynısıdır;
+- zincir 43113 değil (`--local` yoksa);
+- Identity adresinde (Ek B) kod yok;
+- imzalayan `deployer` değil; yayındaki `agent.json` geçersiz; simülasyon revert ediyor.
+
+Gönderim `chain = Avalanche Fuji (43113)` ile yapılır: viem gönderim anında `eth_chainId`'yi yeniden denetler ve imzaya 43113 koyar.
+
+Gönderimden sonra belirsizlik (çift kayıt riski):
+- `İŞLEM GÖNDERİLMİŞ OLABİLİR: tx bilinmiyor` (gönderim çağrısı hata verdi) ya da `İŞLEM GÖNDERİLDİ, SONUÇ BİLİNMİYOR: tx 0x…` (makbuz beklenemedi): `fuji.json`'da henüz `agentId` olmadığı için betiği yeniden `--broadcast` ile çalıştırmak PİLOT'u **ikinci kez** kaydeder. Önce Snowtrace'te deployer adresinin son işlemine bak. Kayıt zincirdeyse `agentId`'yi `fuji.json`'a elle ekle; yoksa (işlem düşmüşse) yeniden çalıştır.
+- `kayıt işlemi başarısız (revert), zincir değişmedi`: kayıt yok, yeniden denemek güvenli.
+
+İşlemden sonra `agentId`, kontratın yaydığı olaylardan okunur: `Registered(agentId, agentURI, owner)` ve ERC-721 `Transfer(0x0 → owner, agentId)`. İkisi de `[DOĞRULA]` (SPEC olay imzası vermiyor). Olay yoksa, iki olay farklı kimlik gösteriyorsa ya da `agentId = 0` ise dosya **yazılmaz**. Betik `KAYIT ZİNCİRDE AMA DOSYA YAZILMADI` hatası verir ve işlem özetini basar. Bu durumda olayı Snowtrace'te kontrol et; `agentId`'yi `fuji.json`'a elle ekle ve tekrar `--broadcast` çalıştırma.
+
+## 3. Doğrulama
+
+```bash
+jq -r .agentId deployments/fuji.json
+ID=$(jq -r .agentId deployments/fuji.json)
+cast call 0x8004A818BFB912233c491871b3d84c89A494BD9e 'tokenURI(uint256)(string)' $ID --rpc-url $FUJI_RPC   # [DOĞRULA: ERC-721 tokenURI]
+cast call 0x8004A818BFB912233c491871b3d84c89A494BD9e 'ownerOf(uint256)(address)' $ID --rpc-url $FUJI_RPC  # = deployer [DOĞRULA]
+```
+
+- Web route handler `fuji.json.agentId`'yi okuyup `registrations` alanını doldurur (biçim ve zorunlu değerler: UI_HANDOFF §2.6, şablon `data/agent-card/agent.json`). Web `scripts/lib/agentCard.ts`'i içe aktaramaz (`@pilot/scripts` web'in bağımlılığı değil, derlenmiş çıktısı yok); değerleri §2.6'dan alır.
+- `deployments/fuji.json` git'e eklenir; commit'i sen at.
+
+## Yerel deneme (Anvil)
+
+Testler (`pnpm --filter @pilot/scripts test`) bunu otomatik yapar. Anvil'de küçük bir sahte Identity kaydı (`scripts/test/fixtures/MockIdentityRegistry.sol`) kullanılır; anahtar her çalıştırmada üretilir. Foundry yoksa bu testler atlanır.
+
+Elle denemek için: `--local --registry <yerel kayıt adresi> --rpc http://127.0.0.1:8545 --deployments deployments/.anvil.json`. `--local` ile `--rpc` açıkça verilmeli ve yerel olmalı (127.0.0.1, localhost, [::1]); `FUJI_RPC`'ye düşülmez, böylece `source contracts/.env` sonrası yanlışlıkla gerçek Fuji'ye gönderilmez. TODO(spec). `--local` ile çıktı dosyasının adı nokta ile başlamalıdır, böylece gerçek `fuji.json`'a yazılamaz. Yalnız bu kipte `agentURI` için `http://127.0.0.1` de kabul edilir.
