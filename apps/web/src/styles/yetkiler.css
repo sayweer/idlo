@@ -1,0 +1,85 @@
+/* /yetkiler ekranı + landing uyarlamasının küçük eklemeleri. Kök sınıflar: .ykt-* ve .landing …
+   keyarc'ın belirteçleri (--ink, --paper, --glow, --thread …) ve kart/iğne sistemi aynen kullanılır; burada yeni renk yok.
+   Kırmızı (--thread) yalnız ret ve alarm içindir: uyarılar çuha/pirinç (glow) tonundadır. */
+
+/* ── ekran ─────────────────────────────────────────────── */
+.btn.ink { background: var(--ink); color: var(--paper); box-shadow: 0 2px 0 #000, 0 6px 14px -6px rgba(0, 0, 0, 0.5); }
+.btn.ink:hover { background: #2c2720; }
+.btn.ink:focus-visible { outline: 2px dashed var(--glow); outline-offset: 3px; }
+
+.ykt-table th { font-weight: 400; color: var(--ink-soft); width: 42%; vertical-align: top; }
+.ykt-table td { overflow-wrap: anywhere; }
+.ykt-table td a { color: var(--ink); }
+.ykt-difftable thead th { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; width: auto; }
+.ykt-difftable th[scope="row"] { width: 34%; }
+tr.ykt-diff td, tr.ykt-diff th { background: rgba(255, 224, 138, 0.5); color: var(--ink); font-weight: 600; }
+tr.ykt-same td, tr.ykt-same th { opacity: 0.7; }
+.ykt-badge { display: block; margin-top: 2px; font-weight: 400; }
+
+.ykt-note { margin-top: 12px; padding: 10px 12px; background: var(--paper-2); border-left: 4px solid var(--cork-deep); font-size: 13px; line-height: 1.45; }
+
+.ykt-form { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.ykt-form select.input { appearance: auto; }
+.ykt-err { color: var(--ink); font-weight: 600; border-left: 3px solid var(--ink-soft); padding-left: 8px; }
+.ykt-blockers { list-style: none; display: grid; gap: 6px; margin-top: 12px; }
+
+.ykt-predict { margin-top: 14px; padding: 10px 12px; border: 1px dashed #c99a1c; background: rgba(255, 224, 138, 0.35); display: grid; gap: 4px; }
+.ykt-predict p { font-family: var(--f-note); font-size: 17px; line-height: 1.25; }
+.ykt-predict.now { background: rgba(255, 255, 255, 0.5); border-color: rgba(29, 26, 22, 0.35); }
+
+.ykt-warn { background: var(--glow); box-shadow: 0 0 0 3px var(--ink), var(--rest); }
+.ykt-warn .label { color: var(--ink); }
+
+.ykt-countdown { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 8px 0 14px; }
+.ykt-countdown .amount { font-size: 34px; }
+
+.ykt-list { margin: 10px 0 0 18px; display: grid; gap: 6px; font-size: 14px; line-height: 1.4; }
+.ykt-scan { margin-top: 16px; padding-top: 12px; border-top: 1px dashed rgba(29, 26, 22, 0.3); display: grid; gap: 10px; }
+.ykt-expired { flex-wrap: wrap; padding: 8px 0; border-bottom: 1px dashed rgba(29, 26, 22, 0.2); }
+.ykt-expired .mono { font-size: 12px; overflow-wrap: anywhere; }
+
+.ykt-outcome .note { font-size: 18px; }
+
+/* onay penceresi */
+.ykt-modal { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: rgba(29, 26, 22, 0.6); overflow: auto; }
+.ykt-modal-card { width: min(620px, 100%); max-height: calc(100vh - 32px); overflow: auto; --tilt: 0deg; transform: none; box-shadow: var(--lift); }
+.ykt-modal-card:hover { transform: none; }
+.ykt-modal-card .ykt-table th { width: 38%; }
+
+@media (max-width: 760px) {
+  .ykt-table th { width: 40%; }
+  .ykt-difftable { font-size: 11px; }
+  .ykt-difftable th[scope="row"] { width: 32%; }
+  .ykt-countdown .amount { font-size: 28px; }
+  .ykt-modal { place-items: end center; padding: 8px; }
+}
+
+/* ── landing uyarlaması ───────────────────────────────── */
+/* örnek rakamlar: mod rozeti kayarken de görünür kalır */
+.landing .land-rozet { position: fixed; left: 14px; bottom: 14px; z-index: 60; transform: rotate(-1deg); filter: drop-shadow(0 4px 6px rgba(40, 20, 5, 0.4)); }
+.landing .foot-note { font-size: 15px; color: rgba(243, 236, 223, 0.65); }
+/* zaman çubuğu bayrakları: yalnız ret kırmızıdır */
+.landing .flag b { color: var(--ink); }
+.landing #fl3 b { color: var(--thread); }
+/* kontratın "hayır" dediği emir: kırmızı yalnız ret içindir */
+.landing #pAyse { box-shadow: 0 0 0 3px var(--thread), 0 14px 28px -8px rgba(40, 20, 5, 0.45) !important; }
+.landing #pAyse .amount { color: var(--thread); }
+.landing #pAyse .paycur { border-color: var(--thread); line-height: 1.35; }
+/* anahtar dosyasının başlık şeridi: kâğıt tonunda, yeşil "tamam" izlenimi vermez */
+.landing .sheet .bar { background: var(--ink); color: var(--paper); }
+/* kırmızı yalnız ret ve alarm içindir; iplik ve iğne keyarc'ın pano malzemesidir, anlam taşımaz.
+   Geri kalan her şey (vurgu, sıra numarası, onay damgası, sınır çizgisi) mürekkep tonundadır. */
+.landing.landing .but-title i { background: var(--ink); }
+.landing.landing .step b { color: var(--ink-soft); }
+.landing.landing .ptape .now { background: var(--ink); }
+.landing.landing .ptape .now::after { color: var(--ink); }
+.landing.landing .ballot .tally { color: var(--ink); }
+.landing.landing .stamp { color: var(--ink); border-color: var(--ink); }
+.landing.landing .ruler .limit { color: var(--ink); }
+.landing.landing .ruler .limitline { background: var(--ink); }
+.landing.landing .sheet td.x { color: var(--ink-soft); }
+.landing.landing .btn.ghost:hover { color: var(--ink); border-color: var(--ink); }
+@media (max-width: 760px) {
+  .landing .land-rozet { left: 10px; bottom: 10px; }
+  .landing .land-rozet .rozet { font-size: 10px; padding: 3px 6px; }
+}

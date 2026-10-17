@@ -3,12 +3,15 @@ import {
   AGENT_CARD_TYPE_V1,
   FUJI_AGENT_REGISTRY_ID,
   MIN_FEEDBACK,
+  MIN_SCORE,
   NEED_LIMITS,
   SelectionResultSchema,
   type AgentCard,
   type Candidate,
   type SelectionResult,
+  type Thresholds,
 } from "@pilot/shared";
+import type { AgentsResponse } from "./types";
 
 // TEMSİLİ VERİ: apps/pilot/src/directory arka ucu bağlanana kadar /api/agents bu etiketli örnek listeyi döner.
 // Adresler belirgin sahte (0x…<n>), puanlar uydurmadır; ekran bu cevabı her zaman TEMSİLİ VERİ + DEMO ile gösterir.
@@ -34,6 +37,8 @@ function candidate(c: {
   description: string;
   clients: number[];
   feedback: number;
+  /** Geri bildirim vermiş farklı doğrulanmış kullanıcı sayısı. */
+  feedbackClients: number;
   score: number | null;
 }): Candidate {
   return {
@@ -47,10 +52,17 @@ function candidate(c: {
     cardIssueTr: null,
     verifiedClients: c.clients.map(fakeAddr),
     feedbackCount: c.feedback,
+    feedbackClients: c.feedbackClients,
     score: c.score,
     issuesTr: [],
   };
 }
+
+/**
+ * Fixture'ın eşikleri: tek müşterili demo için farklı müşteri alt sınırı 1'e gevşetildi (varsayılan 2); ekran bunu açıkça
+ * belirtir (packages/shared/directory/schemas.ts MIN_VERIFIED_CLIENTS notu).
+ */
+export const FIXTURE_THRESHOLDS: Thresholds = { minFeedback: MIN_FEEDBACK, minScore: MIN_SCORE, minVerifiedClients: 1 };
 
 /** İstemci özeti: kullanıcı metni 300 karakteri aşarsa kısaltılır (UserNeedSchema sınırı). */
 function summaryOf(message: string): string {
@@ -65,6 +77,7 @@ export function buildFixtureSelection(message: string): SelectionResult {
     description: "Maaşı TL olarak yatıran kullanıcı için, imzalı kuralların içinde TL'yi USDT'ye çeviren ajan.",
     clients: [0xa1, 0xa2],
     feedback: 4,
+    feedbackClients: 2,
     score: 95,
   });
   const demoA = candidate({
@@ -73,6 +86,7 @@ export function buildFixtureSelection(message: string): SelectionResult {
     description: "Aylık otomatik USDT alımı yapan örnek ajan.",
     clients: [0xb1],
     feedback: MIN_FEEDBACK,
+    feedbackClients: 1,
     score: 80,
   });
   return SelectionResultSchema.parse({
@@ -85,7 +99,7 @@ export function buildFixtureSelection(message: string): SelectionResult {
           demo: true,
           nameTr: "Demo ajan B",
           code: "TOO_FEW_FEEDBACK",
-          reasonTr: `Doğrulanmış geri bildirim yetersiz: 0 (en az ${MIN_FEEDBACK} gerekli; yalnız bu ajanla gerçekten işlem yapmış kullanıcılar sayılır).`,
+          reasonTr: `Doğrulanmış geri bildirim yetersiz: 0 geri bildirim, 0 farklı müşteri (en az ${MIN_FEEDBACK} geri bildirim ve ${FIXTURE_THRESHOLDS.minVerifiedClients} farklı müşteri gerekli; yalnız bu ajanla gerçekten işlem yapmış kullanıcılar sayılır).`,
         },
       ],
     },
@@ -94,12 +108,12 @@ export function buildFixtureSelection(message: string): SelectionResult {
       items: [
         {
           agentId: "17",
-          rationaleTr: "TL'yi USDT'ye çevirmek için kurulmuş; 2 doğrulanmış kullanıcıdan 95 puan almış.",
+          rationaleTr: "DEMO ajan. 2 farklı doğrulanmış müşteriden 4 geri bildirimle 95 puan.",
           source: "rule",
         },
         {
           agentId: "18",
-          rationaleTr: "Aylık USDT alımına uygun; tek doğrulanmış kullanıcıdan 80 puan almış.",
+          rationaleTr: "DEMO ajan. 1 farklı doğrulanmış müşteriden 3 geri bildirimle 80 puan.",
           source: "rule",
         },
       ],
@@ -109,4 +123,8 @@ export function buildFixtureSelection(message: string): SelectionResult {
       "LLM yok: sıralama ve gerekçeler puana göre, kodla yazıldı.",
     ],
   } satisfies SelectionResult);
+}
+
+export function buildFixtureResponse(message: string): AgentsResponse {
+  return { origin: "fixture", thresholds: FIXTURE_THRESHOLDS, result: buildFixtureSelection(message) };
 }

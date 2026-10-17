@@ -1,4 +1,4 @@
-import { PlanDraftSchema, SelectionResultSchema, type PlanDraft, type SelectionResult } from "@pilot/shared";
+import { PlanDraftSchema, SelectionResultSchema, type PlanDraft, type SelectionResult, type Thresholds } from "@pilot/shared";
 import { z } from "zod";
 
 // /secim'in istemci ↔ sunucu sözleşmesi. Hem Cloudflare Pages işlevleri (functions/api/*) hem de ekran içe aktarır.
@@ -22,11 +22,19 @@ export type AgentsRequest = z.infer<typeof AgentsRequestSchema>;
 export const AGENTS_ORIGINS = ["fixture", "chain"] as const;
 export type AgentsOrigin = (typeof AGENTS_ORIGINS)[number];
 
+/** Elemede kullanılan eşikler (@pilot/shared Thresholds). Varsayılandan farklıysa ekran "gevşetildi" diye belirtir. */
+export const ThresholdsSchema = z.strictObject({
+  minFeedback: z.number().finite().nonnegative(),
+  minScore: z.number().finite().nonnegative(),
+  minVerifiedClients: z.number().finite().nonnegative(),
+});
+
 export const AgentsResponseSchema = z.strictObject({
   origin: z.enum(AGENTS_ORIGINS),
+  thresholds: ThresholdsSchema,
   result: SelectionResultSchema,
 });
-export type AgentsResponse = { origin: AgentsOrigin; result: SelectionResult };
+export type AgentsResponse = { origin: AgentsOrigin; thresholds: Thresholds; result: SelectionResult };
 
 // ───────────────────────────── /api/plan/draft ─────────────────────────────
 
