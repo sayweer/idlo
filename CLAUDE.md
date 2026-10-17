@@ -4,6 +4,7 @@
 Elif'in imzaladığı Uçuş Planı içinde TL→USDT dönüşümünü yürüten ajan sistemi. Tek doğru kaynak: docs/SPEC.md.
 Bileşenler: contracts/ (Foundry, Fuji: FlightPlan), apps/kule (OKX kapısı, MCP 8787), apps/pilot (LLM planlayıcı +
 araçlar + Lira Hava Durumu), apps/servis (OKX.AI, anahtarsız, 8790), apps/web (Next.js), packages/shared.
+UI (apps/web) işi: önce docs/UI_HANDOFF.md'yi oku (ekranlar, veri kaynakları, mevcut/planlanan uç noktalar).
 
 ## Değişmez kurallar
 1. Güvenlik kararını asla LLM'e bırakma. LLM çıktısı her zaman zod ile doğrulanır; LLM yalnız §10.2 araçlarını görür.
