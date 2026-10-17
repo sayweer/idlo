@@ -6,7 +6,7 @@ Bu klasör, başka bir bilgisayarda Claude Code ile kaldığımız yerden devam 
 |---|---|---|
 | `GLOBAL_CLAUDE.md` | Seyit'in global çalışma kuralları (plan önce, step-by-step, ana ajan yönetir/alt ajanlar yapar, **Claude atıfı YASAK**, git kuralları) | O bilgisayarın sahibi kendi `~/.claude/CLAUDE.md`'sini kullanıyorsa **ezme**; içeriği oturumun başında okut (aşağıdaki başlangıç komutu bunu yapar). Kendi global dosyası yoksa `cp docs/claude/GLOBAL_CLAUDE.md ~/.claude/CLAUDE.md`. |
 | `memory/*.md` | Önceki oturumun hafızası (kararlar, commit kuralı, UI sahibi, güvenlik açığı, pivot durumu) | Oturum başında okut. İstersen `~/.claude/projects/<repo-yolu>/memory/` altına kopyala. |
-| `workflows/*.js` | Kullandığımız workflow şablonları (yaz → saldırgan test → 2 mercek inceleme → doğrulama → düzeltme). | `ROOT` sabitini yeni repo yoluna çevirip Workflow aracına `scriptPath` olarak ver ya da örnek al. `ajan-rehberi-arastirma.js` yarıda durduruldu — sıradaki iş bu. |
+| `workflows/*.js` | Kullandığımız workflow şablonları (yaz → saldırgan test → 2 mercek inceleme → doğrulama → düzeltme). | `ROOT` sabitini yeni repo yoluna çevirip Workflow aracına `scriptPath` olarak ver ya da örnek al. `ajan-rehberi-arastirma.js` yarıda durduruldu — HANDOFF §6 adım 4. |
 
 ## Yeni oturumda yapıştırılacak başlangıç komutu
 
@@ -14,9 +14,9 @@ Bu klasör, başka bir bilgisayarda Claude Code ile kaldığımız yerden devam 
 CLAUDE.md, docs/HANDOFF.md, docs/claude/GLOBAL_CLAUDE.md ve docs/claude/memory/*.md dosyalarını oku.
 Bunlar önceki oturumun kuralları, kararları ve hafızası; aynen uygula (özellikle: ana oturum yönetir, kodu
 alt ajanlar/workflow yazar; her anlamlı değişiklikte yerel commit, Barış + Bekir co-author satırları, Claude
-atıfı YOK, push'u ben yaparım). Sonra docs/HANDOFF.md §6'daki sıradaki adımdan devam et: önce
-ajan seçme sohbeti + ERC-8004 eşiği MVP'si için araştırmayı (docs/claude/workflows/ajan-rehberi-arastirma.js)
-hafif bir workflow olarak yeniden çalıştır, sonucu bana özetle.
+atıfı YOK). KULE (apps/kule) ve UI (apps/web) DAHİL kalan HER ŞEYİ bu oturum bitirecek: docs/HANDOFF.md §6'daki
+listeyi 1'den başlayarak sırayla yap (önce KULE B2–B6). Her adım bitince testleri çalıştır, commit at, bana kısa
+özet ver ve sonraki adıma geç. İnsan işi gereken yerde (B1 duman testi, .env, deploy, VPS) komutları hazırla, bana sor.
 ```
 
 ## Yeni bilgisayarda kontrol listesi

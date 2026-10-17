@@ -38,12 +38,12 @@ cd contracts && forge build && forge test && cd ..
   ```
   **Claude atıfı yok** (Co-Authored-By Claude, Claude-Session, 🤖 satırları YASAK). Push'u kullanıcı yapar.
 - **Ana oturum yönetir, kodu alt ajanlar/workflow yazar;** her görev: yaz → saldırgan testler → 2 mercekle inceleme → doğrulama → düzeltme → bağımsız test.
-- **UI (`apps/web`) ve KULE (`apps/kule`) Bekir abinin;** bizim taraf bunlara kod yazmaz, sözleşmeleri sabit ve belgeli tutar.
+- **GÜNCEL (Seyit'in kararı): bu repoyu açan oturum KULE (`apps/kule`) ve UI (`apps/web`) DAHİL kalan HER ŞEYİ bitirir.** Eski "Bekir abinin, dokunma" notu artık geçersiz — iş Bekir abinin bilgisayarındaki oturumda yapılıyor. Sözleşmeler (`@pilot/shared` şemaları, `IFlightPlan`, `deployments/fuji.json`, `docs/UI_HANDOFF.md`) bozulmadan uygulanır.
 
 ## 4. Verilmiş kararlar
 
 1. **KULE yetki bağı (güvenlik, doğrulandı):** Kontrat herkesin kendi planını kurmasına izin veriyor; KULE yalnız `BuyAuthorized` var mı diye bakarsa çalınmış ajan anahtarıyla yabancı bir plan kullanıcının hesabında emir açtırabilir. Çözüm `packages/shared/authz.ts`: `checkActionOwner` (kilitten önce) + `checkActionLive` (sağlıktan sonra); `apps/kule/.env.example`'da `PLAN_USER_ADDRESS`, `PILOT_AGENT_ADDRESS`. **KULE bunları `kule_execute`'ta çağırmadıkça açık kapanmış sayılmaz.** CLAUDE.md kural 3'e işlendi. Açık TODO: kullanıcının son PlanSet/PlanRevoked'ından eski BuyAuthorized reddedilmeli.
-2. **planFromSentence LLM'li kalıyor** + imzadan önce **onay penceresi** ("Zincire yazılacak değerler"): değerler + kaynak rozeti (senin cümlenden / varsayılan / senin düzeltmen), düzeltme yeniden doğrulanır, imza yalnız `packages/shared/plan` çıktısından. Pencere UI'ı Bekir abide.
+2. **planFromSentence LLM'li kalıyor** + imzadan önce **onay penceresi** ("Zincire yazılacak değerler"): değerler + kaynak rozeti (senin cümlenden / varsayılan / senin düzeltmen), düzeltme yeniden doğrulanır, imza yalnız `packages/shared/plan` çıktısından. Pencere UI'ı §6 adım 3'te yapılır.
 3. **Kontrat kütüphaneleri npm** (pnpm workspace).
 4. **Süresi dolan planın yerine gelen yeni plan 24 sa bekler** (fail-closed; TODO(spec)). Demoda planı sahneden ≥24 sa önce kur.
 5. **Koul** yalnız fikir kredisi; kodu kullanılmıyor. Not: Koul'da 24 sa kilidi yok, o fikir bizim — sunumda "Koul'dan kredi"yi yalnız "kural kullanıcının isteğinden şekillenir" ile sınırla.
@@ -71,9 +71,18 @@ cd contracts && forge build && forge test && cd ..
 - **Organizatörlere:** Fuji yeterli mi? OKX TR'de demo işlem açık mı? Builder Code OKX TR'de geçerli mi? OKX TR kurumsal hesap?
 - **SPEC'e işlenecekler:** authz kuralı (§9.2, Ek B), onay penceresi (§10.6/§13), Barış'ın soruları, alınan pivot kararı.
 
-## 6. Sıradaki adımlar
+## 6. Sıradaki adımlar — oturum bunların HEPSİNİ bu sırayla bitirir
 
-1. (Kullanıcı) `.env`'leri doldur, Fuji AVAX al, `docs/DEPLOY.md`'ye göre deploy + Snowtrace doğrulama, `scripts/register-agent.ts` ile ERC-8004 kaydı.
-2. (Bekir abi, kritik yol) **B1 duman testleri + CAA testi hemen**, sonra KULE B2–B6 (`authz.ts` bağla), B7 VPS; UI.
-3. (Biz) Ajan seçme MVP araştırmasını yeniden çalıştır (§5 KARAR) → tasarım → uygulama; `scripts/e2e.ts` (anvil uçtan uca) yaz; SPEC v5 farkını yazdır. Taşıma paketi: `docs/claude/README.md`.
-4. Sunum: 7 slayt + soru-cevap kartı. Mentör soruları: "OKX bunu yaparsa?", "ürün olarak satılabilir mi?", "ajan kandırılabilir mi?", "diğer bekçi projelerinden farkınız?" — cevap taslakları: yetki katmanıyız (OKX'in rakibi değil ekosistemine altyapı), limit kullanıcının imzalı kuralı ve zincirde, kontrat gerçekten reddediyor, ajan anahtarı çalınsa bile sınır duruyor; satış: ajan geliştiricilerine/borsalara lisans-SaaS, Builder Code payı, Lira Hava Durumu verisi.
+Her adım: workflow ile yaz → saldırgan test → inceleme → düzelt → `pnpm -r build && pnpm -r test && (cd contracts && forge test)` yeşil → yerel commit (co-author satırları, Claude atıfı yok) → kullanıcıya kısa özet → sonraki adım. Push'u kullanıcı ister.
+
+1. **KULE B2–B6** (SPEC §9, §17.2 B2–B6; testler U-1…U-15): ATK alt süreci + MCP istemcisi (`kule_market`, `kule_balance`); Streamable HTTP MCP sunucusu (bearer, token→ajan bağı) + `kule_status`, `kule_heartbeat`; `kule_quote` (birim okuma, DÜZELT); zincir izleyici + `kule_execute` (§9.2 sırası, **`packages/shared/authz.ts` `checkActionOwner` kilitten önce, `checkActionLive` sağlıktan sonra**, izin başına kilit + diskte durum RESERVED→PLACED→DONE→REPORTED, yeniden başlamada netleştirme, `TOO_LATE`, `tickSz`, fon/işlem hesabı, `reportExecution`, `KULE_EXEC=paper`); sağlık + CAA döngüsü (U-8, U-9). OKX çağrıları ATK üzerinden; anahtar yalnız `~/.okx/config.toml`/`.env`. Testler sahte ATK ile; canlı ATK testleri yalnız anahtar varsa.
+2. **`scripts/e2e.ts`** (anvil uçtan uca, E1-yerel): deploy → setPlan → PİLOT kural modu (kayıt 2025-03-19) → requestBuy → **gerçek `apps/kule` (`KULE_EXEC=paper`)** → reportExecution → mutabakat EŞLEŞTİ; aynı zincirde stolen-key reddi.
+3. **UI D1–D3 (ŞART)** `docs/UI_HANDOFF.md`'ye göre: cüzdan (Fuji), `/talimat` (cümle → taslak → **onay penceresi** `packages/shared/plan` → `setPlan`), `/panel` (iz, hava, döngü, sorular, retler), `/yetkiler` (düşür / yükselt 24 sa / durdur). Sonra D4 `/ajan`, `/servis`, D5 `/demo`. Tasarım skill'leri: GLOBAL_CLAUDE.md §9.
+4. **Ajan seçme MVP** (§5 KARAR): önce `docs/claude/workflows/ajan-rehberi-arastirma.js` araştırması (hafif), sonra uygulama: ERC-8004 okuyucu + eşik (kod) + sıralama (LLM) + 3 DEMO ajanı kaydı/puanı + seçilen ajan için plan + KULE'de ajan başına token + `agentId` cüzdanı == `plan.agent` kontrolü + UI ajan listesi.
+5. **B7 VPS** (systemd, Caddy, 127.0.0.1 bağları; SPEC §6.5 — güvenlik duvarına ve başka servislere dokunma) — kullanıcıyla birlikte, komutları o çalıştırır.
+6. **SPEC v5 farkı** (`docs/SPEC.md`'ye ek bölüm: authz kuralı, onay penceresi, ajan seçme, verilen kararlar) + README.
+7. **Sunum:** 7 slayt + soru-cevap kartı, yeni hikâyeyle (ajan seçme + yetki katmanı).
+
+İnsan işleri (oturum komutları hazırlar, kullanıcı çalıştırır): B1 duman testleri + `scripts/caa-test.ts` (OKX TR demo var mı, CAA çalışıyor mu); `.env`'ler; Fuji AVAX; `docs/DEPLOY.md` ile Fuji deploy + Snowtrace; `scripts/register-agent.ts`; web yayını; E1 Fuji'de gerçek uçtan uca; E2 iki prova + ekran kayıtları.
+
+8. Sunum notları: 7 slayt + soru-cevap kartı. Mentör soruları: "OKX bunu yaparsa?", "ürün olarak satılabilir mi?", "ajan kandırılabilir mi?", "diğer bekçi projelerinden farkınız?" — cevap taslakları: yetki katmanıyız (OKX'in rakibi değil ekosistemine altyapı), limit kullanıcının imzalı kuralı ve zincirde, kontrat gerçekten reddediyor, ajan anahtarı çalınsa bile sınır duruyor; satış: ajan geliştiricilerine/borsalara lisans-SaaS, Builder Code payı, Lira Hava Durumu verisi.
