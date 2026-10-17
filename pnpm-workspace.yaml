@@ -1,0 +1,10 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Bağımlılık kurulum betikleri varsayılan olarak kapalı (create-next-app'in seçimi korunur).
+# esbuild (tsx için) ikili dosyasını isteğe bağlı paketten alır; kurulum betiğine gerek yok.
+allowBuilds:
+  esbuild: false
+  sharp: false
+  unrs-resolver: false
