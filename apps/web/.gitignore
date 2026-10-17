@@ -28,3 +28,7 @@ public/deployments/
 .env
 .env.*
 !.env.example
+
+.vercel
+api/
+.vercel

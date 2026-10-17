@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "cd ../.. && npx -y pnpm@11.24.0 install --frozen-lockfile",
+  "buildCommand": "cd ../.. && npx -y pnpm@11.24.0 --filter @pilot/shared build && npx -y pnpm@11.24.0 --filter web exec vite build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/rpc", "destination": "/api/rpc" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    { "source": "/(sw.js|registerSW.js|index.html|manifest.webmanifest)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+  ]
+}
